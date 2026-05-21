@@ -1,136 +1,146 @@
 /**
- * Google Search service — finds the most relevant business website
- * by searching Google for the business name + location.
+ * Google Search via headless Chrome CDP (Puppeteer).
+ * Finds the best matching business website by searching Google
+ * for the business name + city. Excludes map sites, directories, socials.
  *
  * Used by the enrichment worker before website scraping.
- * Routes through FlareSolverr to bypass Google's anti-bot.
  */
 
-import { load } from 'cheerio';
+import puppeteer, { Browser, Page } from 'puppeteer';
 
-const FLARESOLVER_URL = process.env.FLARESOLVER_URL || 'http://127.0.0.1:8191/v1';
-const REQUEST_TIMEOUT = 25000;
+const CHROME_CDP = process.env.CHROME_CDP_URL || 'ws://127.0.0.1:3012';
+const PAGE_TIMEOUT = 20000;
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-/**
- * Fetch a URL through FlareSolverr and return the raw HTML.
- */
-async function fetchThroughFlare(url: string): Promise<string | null> {
-  try {
-    const resp = await fetch(FLARESOLVER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        cmd: 'request.get',
-        url,
-        maxTimeout: REQUEST_TIMEOUT,
-      }),
-    });
+let browserInstance: Browser | null = null;
 
-    const data = await resp.json() as any;
-    if (data.status !== 'ok') {
-      console.warn(`[GoogleSearch] FlareSolverr error: ${data.message || data.status}`);
-      return null;
-    }
-
-    return data.solution?.response || null;
-  } catch (error: any) {
-    console.warn(`[GoogleSearch] Request failed: ${error?.message || error}`);
-    return null;
-  }
-}
-
-/**
- * Extract business website from a Google Search result.
- * Returns the first non-Google, non-social, relevant link.
- */
-function extractBusinessWebsite(html: string, businessName: string): string | null {
-  const $ = load(html);
-
-  // URLs to skip
-  const skipDomains = [
-    'google.com', 'youtube.com', 'facebook.com', 'instagram.com',
-    'twitter.com', 'linkedin.com', 'yelp.com', 'yellowpages.com',
-    'manta.com', 'bbb.org', 'trustpilot.com', 'maps.google.com',
-    'pinterest.com', 'tiktok.com',
-  ];
-
-  let bestLink: string | null = null;
-  let bestScore = 0;
-
-  // Look at organic search results
-  $('a[href^="http"]').each((_: number, el: any) => {
-    const href = $(el).attr('href') || '';
-
-    // Decode google redirect URLs
-    let url = href;
-    if (url.includes('/url?q=')) {
-      const m = url.match(/\/url\?q=([^&]+)/);
-      if (m) url = decodeURIComponent(m[1]);
-    }
-
+async function getBrowserWSEndpoint(): Promise<string> {
+  let endpoint = CHROME_CDP;
+  if (!endpoint.includes('/devtools/')) {
+    let baseUrl = endpoint;
+    if (baseUrl.startsWith('ws://')) baseUrl = 'http://' + baseUrl.slice(5);
+    if (baseUrl.startsWith('wss://')) baseUrl = 'https://' + baseUrl.slice(6);
+    if (!baseUrl.startsWith('http')) baseUrl = `http://${baseUrl}`;
+    baseUrl = baseUrl.replace(/\/+$/, '');
     try {
-      const parsed = new URL(url);
-      const domain = parsed.hostname.replace(/^www\./, '').toLowerCase();
-
-      // Skip known non-business domains
-      if (skipDomains.some((d) => domain.includes(d))) return;
-
-      // Skip ads
-      if (url.includes('googleadservices') || url.includes('/aclk?')) return;
-
-      // Score: higher if business name appears in the link text or URL
-      const linkText = $(el).text().toLowerCase();
-      const bizLower = businessName.toLowerCase();
-      let score = 1;
-
-      if (linkText.includes(bizLower) || url.toLowerCase().includes(bizLower)) {
-        score += 5; // Strong match
-      }
-
-      // Prefer .com/.ca/.co.uk etc over blogspot/wix subdomains
-      if (!domain.includes('blogspot') && !domain.includes('wixsite') && !domain.includes('squarespace')) {
-        score += 2;
-      }
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestLink = url;
-      }
+      const resp = await fetch(`${baseUrl}/json/version`);
+      const data = await resp.json() as { webSocketDebuggerUrl: string };
+      endpoint = data.webSocketDebuggerUrl;
     } catch {
-      // Invalid URL, skip
+      // use as-is
     }
-  });
+  }
+  return endpoint;
+}
 
-  return bestLink;
+async function getBrowser(): Promise<Browser> {
+  if (browserInstance && browserInstance.connected) return browserInstance;
+  const wsEndpoint = await getBrowserWSEndpoint();
+  browserInstance = await puppeteer.connect({
+    browserWSEndpoint: wsEndpoint,
+    defaultViewport: { width: 1280, height: 800 },
+  });
+  return browserInstance;
 }
 
 /**
- * Search Google for a business name + location and return the best matching website.
+ * Search Google via headless Chrome, find the best matching business website.
  */
 export async function findBusinessWebsite(
   businessName: string,
   city: string,
 ): Promise<string | null> {
+  let browser: Browser | null = null;
+  let page: Page | null = null;
+
   try {
+    browser = await getBrowser();
+    page = await browser.newPage();
+    await page.setUserAgent(USER_AGENT);
+
     const query = encodeURIComponent(`"${businessName}" ${city}`);
-    const url = `https://www.google.com/search?q=${query}&hl=en`;
+    await page.goto(`https://www.google.com/search?q=${query}&hl=en`, {
+      waitUntil: 'networkidle2',
+      timeout: PAGE_TIMEOUT,
+    });
 
-    const html = await fetchThroughFlare(url);
-    if (!html) {
-      console.warn(`[GoogleSearch] No HTML returned for "${businessName}"`);
-      return null;
-    }
+    // Let JavaScript render
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 2000)));
 
-    const website = extractBusinessWebsite(html, businessName);
-    if (website) {
-      console.log(`[GoogleSearch] Found website for "${businessName}": ${website}`);
+    // Extract + score all search result links inside the browser context
+    const bestUrl = await page.evaluate((bizName: string) => {
+      const skipDomains = [
+        'google.com', 'youtube.com', 'facebook.com', 'instagram.com',
+        'twitter.com', 'linkedin.com', 'yelp.com', 'yellowpages.com',
+        'manta.com', 'bbb.org', 'trustpilot.com', 'maps.google.com',
+        'pinterest.com', 'tiktok.com', 'mapquest.com', 'mapquest.ca',
+        'foursquare.com', 'tripadvisor.com', 'whitepages.com',
+        'merchantcircle.com', 'superpages.com', 'citysearch.com',
+        'kudzu.com', 'local.com', 'hotfrog.com', 'cylex.com',
+        'chamberofcommerce.com', 'buzzfile.com', 'mappy.com',
+        'openstreetmap.org', 'waze.com', 'here.com', 'tomtom.com',
+      ];
+
+      function getScore(url: string, linkText: string): number {
+        try {
+          const parsed = new URL(url);
+          const domain = parsed.hostname.replace(/^www\./, '').toLowerCase();
+
+          for (const d of skipDomains) {
+            if (domain === d || domain.endsWith('.' + d)) return -1;
+          }
+
+          if (url.includes('googleadservices') || url.includes('/aclk?')) return -1;
+
+          const biz = bizName.toLowerCase();
+          let score = 1;
+
+          if (url.toLowerCase().includes(biz)) score += 10;
+          if (linkText.toLowerCase().includes(biz)) score += 8;
+
+          if (!domain.includes('blogspot') && !domain.includes('wixsite') &&
+              !domain.includes('squarespace') && !domain.includes('weebly')) {
+            score += 2;
+          }
+
+          const parts = domain.split('.');
+          if (parts.length > 3) score -= 2;
+
+          return score;
+        } catch { return -1; }
+      }
+
+      const anchors = document.querySelectorAll('a[href^="http"]');
+      let best = { url: '', score: 0 };
+
+      anchors.forEach((a: HTMLAnchorElement) => {
+        let href = a.href;
+        if (href.startsWith('https://www.google.com/url?q=')) {
+          const m = href.match(/[?&]q=([^&]+)/);
+          if (m) href = decodeURIComponent(m[1]);
+        }
+        const text = (a.textContent || '').trim();
+        if (!href || !text) return;
+        const score = getScore(href, text);
+        if (score > best.score) {
+          best = { url: href, score };
+        }
+      });
+
+      return best.score > 0 ? best.url : null;
+    }, businessName);
+
+    if (bestUrl) {
+      console.log(`[GoogleSearch] Best match for "${businessName}": ${bestUrl}`);
     } else {
-      console.log(`[GoogleSearch] No website found for "${businessName}"`);
+      console.log(`[GoogleSearch] No suitable website found for "${businessName}"`);
     }
-
-    return website;
+    return bestUrl;
   } catch (error: any) {
     console.warn(`[GoogleSearch] Error: ${error?.message || error}`);
     return null;
+  } finally {
+    if (page) { try { await page.close(); } catch {} }
   }
 }
