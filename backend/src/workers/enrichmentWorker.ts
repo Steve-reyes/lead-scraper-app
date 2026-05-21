@@ -12,6 +12,7 @@
 import { Lead } from '../types';
 import { scrapeWebsite } from '../services/scraper';
 import { findInDirectories, mergeDirectoryResult } from '../services/directoryFallback';
+import { findBusinessWebsite } from '../services/googleSearch';
 import { detectCountry } from '../utils/validators';
 
 export type EnrichmentCallback = (lead: Lead) => void;
@@ -30,13 +31,26 @@ export async function enrichLead(
   const city = lead.city || lead.address?.split(',')[0]?.trim() || '';
   const country = lead.country || detectCountry(lead.address || '');
 
-  // ── Step 1: Always scrape website if lead has one ──
-  if (lead.website) {
-    enriched.enrichmentStatus = 'scanning_website';
-    onUpdate(enriched);
+  // ── Step 1: Find business website via Google Search, then scrape it ──
+  enriched.enrichmentStatus = 'scanning_website';
+  onUpdate(enriched);
 
+  let websiteToScrape = lead.website;
+  try {
+    const foundWebsite = await findBusinessWebsite(lead.businessName, city);
+    if (foundWebsite) {
+      websiteToScrape = foundWebsite;
+      enriched.website = foundWebsite;
+    }
+  } catch (error: any) {
+    enriched.enrichmentError = enriched.enrichmentError
+      ? `${enriched.enrichmentError} | Google search failed: ${error?.message || 'Unknown'}`
+      : `Google search failed: ${error?.message || 'Unknown'}`;
+  }
+
+  if (websiteToScrape) {
     try {
-      const scraped = await scrapeWebsite(lead.website);
+      const scraped = await scrapeWebsite(websiteToScrape);
 
       if (scraped.emails.length > 0 && !enriched.email) {
         enriched.email = scraped.emails[0];
@@ -56,7 +70,7 @@ export async function enrichLead(
       // Track source
       const alreadyHasSource = enriched.sources.some((s) => s.type === 'website_scrape');
       if (!alreadyHasSource) {
-        enriched.sources.push({ type: 'website_scrape', name: 'Web Scrape', url: lead.website });
+        enriched.sources.push({ type: 'website_scrape', name: 'Web Scrape', url: websiteToScrape });
       }
     } catch (error: any) {
       enriched.enrichmentError = enriched.enrichmentError
