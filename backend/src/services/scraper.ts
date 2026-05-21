@@ -101,6 +101,62 @@ function scrapePageContent(html: string, baseUrl: string): ScrapedContact {
   };
 }
 
+// Known web agency/hosting/template domains to always filter out
+const AGENCY_DOMAINS = [
+  'webdesign.com', 'webagency.com', 'wix.com', 'squarespace.com',
+  'wordpress.com', 'shopify.com', 'godaddy.com', 'hostinger.com',
+  'bluehost.com', 'siteground.com', 'wpelevate.com', 'kinsta.com',
+  'elementor.com', 'divi.com', 'themeforest.net', 'envato.com',
+];
+
+/**
+ * Get the business domain from a URL (strip www).
+ */
+function getBusinessDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Filter emails extracted from a scraped page — prefer same-domain matches.
+ * Falls back to generic providers (gmail, yahoo, etc.) if no same-domain hit.
+ * Always excludes known agency/hosting domains.
+ */
+function filterEmailsByDomain(emails: string[], businessUrl: string): string[] {
+  const bizDomain = getBusinessDomain(businessUrl);
+
+  const GENERIC_PROVIDERS = [
+    'gmail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
+    'outlook.com', 'live.com', 'msn.com', 'icloud.com',
+    'protonmail.com', 'proton.me', 'aol.com', 'mail.com',
+    'zoho.com', 'yandex.com', 'gmx.com',
+  ];
+
+  const sameDomain: string[] = [];
+  const generic: string[] = [];
+
+  for (const email of emails) {
+    const domain = email.split('@')[1]?.toLowerCase();
+    if (!domain) continue;
+
+    // Skip known agency/hosting/template domains
+    if (AGENCY_DOMAINS.some((a) => domain.includes(a) || a.includes(domain))) continue;
+
+    // Match business domain (including subdomains)
+    if (bizDomain && (domain === bizDomain || domain.endsWith('.' + bizDomain))) {
+      sameDomain.push(email);
+    } else if (GENERIC_PROVIDERS.includes(domain)) {
+      generic.push(email);
+    }
+  }
+
+  // Prefer same-domain emails, fall back to generic providers
+  return sameDomain.length > 0 ? sameDomain : generic;
+}
+
 /**
  * Full website scrape: homepage + /contact + /about.
  */
@@ -139,6 +195,9 @@ export async function scrapeWebsite(websiteUrl: string): Promise<ScrapedContact>
 
   combined.emails = [...new Set(combined.emails)];
   combined.phones = [...new Set(combined.phones)];
+
+  // Filter: prefer emails matching the business domain, exclude agency emails
+  combined.emails = filterEmailsByDomain(combined.emails, url);
 
   return combined;
 }
