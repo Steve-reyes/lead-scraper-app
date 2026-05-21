@@ -114,7 +114,8 @@ export async function findBusinessWebsite(
       const anchors = document.querySelectorAll('a[href^="http"]');
       let best = { url: '', score: 0 };
 
-      anchors.forEach((a: HTMLAnchorElement) => {
+      anchors.forEach((el) => {
+        const a = el as HTMLAnchorElement;
         let href = a.href;
         if (href.startsWith('https://www.google.com/url?q=')) {
           const m = href.match(/[?&]q=([^&]+)/);
