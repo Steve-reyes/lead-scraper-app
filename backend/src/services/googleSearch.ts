@@ -71,14 +71,7 @@ export async function findBusinessWebsite(
     // Extract + score all search result links inside the browser context
     const bestUrl = await page.evaluate((bizName: string) => {
       const skipDomains = [
-        'google.com', 'youtube.com', 'facebook.com', 'instagram.com',
-        'twitter.com', 'linkedin.com', 'yelp.com', 'yellowpages.com',
-        'manta.com', 'bbb.org', 'trustpilot.com', 'maps.google.com',
-        'pinterest.com', 'tiktok.com', 'mapquest.com', 'mapquest.ca',
-        'foursquare.com', 'tripadvisor.com', 'whitepages.com',
-        'merchantcircle.com', 'superpages.com', 'citysearch.com',
-        'kudzu.com', 'local.com', 'hotfrog.com', 'cylex.com',
-        'chamberofcommerce.com', 'buzzfile.com', 'mappy.com',
+        'mapquest.com', 'mapquest.ca', 'maps.google.com', 'mappy.com',
         'openstreetmap.org', 'waze.com', 'here.com', 'tomtom.com',
       ];
 
