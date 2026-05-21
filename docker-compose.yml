@@ -1,0 +1,27 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: lead-scraper-backend
+    network_mode: "host"
+    environment:
+      - PORT=4000
+      - WS_PORT=4001
+      - NODE_ENV=production
+      - CHROME_CDP_URL=ws://127.0.0.1:3012
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: lead-scraper-frontend
+    network_mode: "host"
+    environment:
+      - PORT=3000
+      - NEXT_PUBLIC_API_URL=http://localhost:4000
+      - NEXT_TELEMETRY_DISABLED=1
+    depends_on:
+      - backend
+    restart: unless-stopped
