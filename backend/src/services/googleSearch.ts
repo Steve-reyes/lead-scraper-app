@@ -23,7 +23,10 @@ const LISTING_DOMAINS = [
   'cylex.es', 'cylex.us', 'kudzu.com', 'merchantcircle.com',
   'superpages.com', 'citysearch.com', 'local.com',
   'chamberofcommerce.com', 'buzzfile.com', 'bbb.org', 'trustpilot.com',
-  'manta.com', 'whitepages.com',
+  'manta.com', 'whitepages.com', 'infobel.com', 'wheree.com',
+  'canada411.ca', 'canpages.ca', '411.ca', 'findglocal.com',
+  'n49.com', 'bizbangboom.com', 'nextdoor.com', 'bizcommunity.com',
+  'zaubee.com', 'thebest.co', 'opendi.com', 'worldplaces.com',
 ];
 
 let browserInstance: Browser | null = null;
@@ -110,7 +113,8 @@ async function extractWebsiteFromListingPage(
               href.includes('facebook.com') || href.includes('instagram.com') ||
               href.includes('twitter.com') || href.includes('linkedin.com') ||
               href.includes('mapquest') || href.includes('google.com/maps') ||
-              href.includes('bbb.org')) {
+              href.includes('bbb.org') || href.includes('infobel') ||
+              href.includes('wheree')) {
             return;
           }
 
