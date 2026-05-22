@@ -160,25 +160,6 @@ export default function EnrichPage() {
             // Final persist
             const all = Array.from(leadsMapRef.current.values());
             localStorage.setItem('enrich-session-leads', JSON.stringify(all));
-
-            // Push completed leads (with phone/email/website) to enriched-businesses
-            const completed = all.filter((l) => l.phone || l.email || l.website);
-            if (completed.length > 0) {
-              const listName = activeListName || localStorage.getItem('enrich-session-name') || 'Unnamed List';
-              const entry = {
-                listName,
-                leads: completed,
-                enrichedAt: new Date().toISOString(),
-              };
-              try {
-                const existing = JSON.parse(localStorage.getItem('enriched-businesses') || '[]');
-                // Replace if same list name exists, else append
-                const idx = existing.findIndex((g: any) => g.listName === listName);
-                if (idx >= 0) existing[idx] = entry;
-                else existing.push(entry);
-                localStorage.setItem('enriched-businesses', JSON.stringify(existing));
-              } catch {}
-            }
             break;
           }
 
