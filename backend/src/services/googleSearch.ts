@@ -28,6 +28,10 @@ const LISTING_DOMAINS = [
   'n49.com', 'bizbangboom.com', 'nextdoor.com', 'bizcommunity.com',
   'zaubee.com', 'thebest.co', 'opendi.com', 'worldplaces.com',
   'bizpages.org', 'bizpages.com',
+  'homestars.com', 'prunderground.com',
+  'threebestrated.com', 'ccaward.com',
+  'industryoversight.ca', 'trustedpros.ca',
+  'about.me', 'homeguide.com',
 ];
 
 let browserInstance: Browser | null = null;
@@ -153,7 +157,11 @@ async function extractFromListingPage(
               href.includes('twitter') || href.includes('linkedin') ||
               href.includes('mapquest') || href.includes('google.com/maps') ||
               href.includes('bbb') || href.includes('infobel') ||
-              href.includes('wheree') || href.includes('bizpages')) {
+              href.includes('wheree') || href.includes('bizpages') ||
+              href.includes('homestars') || href.includes('prunderground') ||
+              href.includes('threebestrated') || href.includes('ccaward') ||
+              href.includes('industryoversight') || href.includes('trustedpros') ||
+              href.includes('about.me')) {
             return;
           }
 
