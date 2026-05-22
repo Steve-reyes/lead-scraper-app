@@ -221,6 +221,10 @@ export async function findBusinessWebsite(
         'instagram.com', 'facebook.com', 'facebook.ca', 'fb.com',
         'twitter.com', 'x.com', 'tiktok.com', 'pinterest.com',
         'youtube.com', 'youtu.be',
+        // Google (catches all subdomains via endsWith check)
+        'google.com', 'google.ca', 'google.co.uk',
+        // Wikipedia, general reference
+        'wikipedia.org', 'wikidata.org',
       ];
 
       function isListing(domain: string): boolean {
