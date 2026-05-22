@@ -56,7 +56,11 @@ export default function LeadKanbanPage() {
       const parsed: EnrichedGroup[] = JSON.parse(stored);
       for (const g of parsed) {
         for (const l of g.leads) {
-          l.kanbanStatus = l.kanbanStatus || 'new';
+          if (l.kanbanStatus !== 'contacted' && l.kanbanStatus !== 'qualified' &&
+              l.kanbanStatus !== 'closed' && l.kanbanStatus !== 'lost') {
+            // Auto-sort: no email → Incomplete, else New
+            l.kanbanStatus = (!l.email) ? 'incomplete' : 'new';
+          }
           l.listName = g.listName;
         }
       }
