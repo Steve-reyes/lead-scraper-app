@@ -155,16 +155,31 @@ export async function searchGoogleMaps(request: SearchRequest): Promise<Lead[]> 
     await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
     await delay(3000, 5000);
 
-    // Cookie consent
+    // Cookie consent — multiple languages
     try {
       const handled = await page.evaluate(() => {
         for (const btn of Array.from(document.querySelectorAll('button'))) {
           const t = btn.textContent?.toLowerCase() || '';
-          if (t.includes('accept all') || t.includes('reject all')) { (btn as HTMLButtonElement).click(); return true; }
+          if (t.includes('accept all') || t.includes('reject all') ||
+              t.includes('aceptar todo') || t.includes('rechazar todo') ||
+              t.includes('accepteren') || t.includes('alle akzeptieren') ||
+              t.includes('accepter tout') || t.includes('tout accepter')) {
+            (btn as HTMLButtonElement).click(); return true;
+          }
         }
         return false;
       });
-      if (handled) { console.log('[GMaps] Consent handled'); await delay(2000, 3000); }
+      if (handled) {
+        console.log('[GMaps] Consent handled');
+        await delay(2000, 3000);
+        // Wait for redirect back to maps from consent page
+        try {
+          await page.waitForFunction(() => !window.location.href.includes('consent.google'), { timeout: 15000 });
+          await delay(1000, 2000);
+        } catch {
+          console.log('[GMaps] Consent redirect timeout, continuing...');
+        }
+      }
     } catch {}
 
     // Wait for results
