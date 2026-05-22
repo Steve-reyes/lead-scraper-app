@@ -284,9 +284,9 @@ export async function findBusinessWebsite(
           return businessWebsite;
         }
 
-        // If we couldn't extract from the listing, fall back to the listing URL itself
-        console.log(`[GoogleSearch] Could not extract from listing, returning listing URL`);
-        return bestResultUrl;
+        // If we couldn't extract from the listing, skip entirely — don't scrape the listing page
+        console.log(`[GoogleSearch] Could not extract from listing, skipping`);
+        return null;
       }
     } catch {
       // Invalid URL, just return it
