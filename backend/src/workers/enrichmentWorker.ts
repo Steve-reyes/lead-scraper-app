@@ -80,10 +80,13 @@ export async function enrichLead(
 
   let websiteToScrape = lead.website;
   try {
-    const foundWebsite = await findBusinessWebsite(lead.businessName, city);
-    if (foundWebsite) {
-      websiteToScrape = foundWebsite;
-      enriched.website = foundWebsite;
+    const searchResult = await findBusinessWebsite(lead.businessName, city);
+    if (searchResult.websiteUrl) {
+      websiteToScrape = searchResult.websiteUrl;
+      enriched.website = searchResult.websiteUrl;
+    }
+    if (searchResult.email && !enriched.email) {
+      enriched.email = searchResult.email;
     }
   } catch (error: any) {
     enriched.enrichmentError = enriched.enrichmentError

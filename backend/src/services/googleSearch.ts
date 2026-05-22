@@ -27,6 +27,7 @@ const LISTING_DOMAINS = [
   'canada411.ca', 'canpages.ca', '411.ca', 'findglocal.com',
   'n49.com', 'bizbangboom.com', 'nextdoor.com', 'bizcommunity.com',
   'zaubee.com', 'thebest.co', 'opendi.com', 'worldplaces.com',
+  'bizpages.org', 'bizpages.com',
 ];
 
 let browserInstance: Browser | null = null;
@@ -69,12 +70,21 @@ function isListingDomain(domain: string): boolean {
 }
 
 /**
- * Open a listing page in Chrome and extract the business's own website link.
+ * Result from extracting data from a listing page.
  */
-async function extractWebsiteFromListingPage(
+interface ListingExtractionResult {
+  websiteUrl: string | null;
+  email: string | null;
+}
+
+/**
+ * Open a listing page in Chrome and extract the business's own website link + email.
+ * Handles "Click to view email" buttons (bizpages.org, etc.) by clicking them.
+ */
+async function extractFromListingPage(
   listingUrl: string,
   businessName: string,
-): Promise<string | null> {
+): Promise<ListingExtractionResult> {
   let browser: Browser | null = null;
   let page: Page | null = null;
 
@@ -90,12 +100,42 @@ async function extractWebsiteFromListingPage(
 
     await page.evaluate(() => new Promise((r) => setTimeout(r, 2000)));
 
-    // Find all links on the listing page, pick the one that looks like the business's own website
-    const websiteUrl = await page.evaluate((bizName: string) => {
+    // Click "Click to view email" buttons to reveal hidden emails
+    const clicked = await page.evaluate(() => {
+      const els = Array.from(document.querySelectorAll('a, button, span, div, td'));
+      for (const el of els) {
+        const t = (el.textContent || '').toLowerCase().trim();
+        if (t.includes('click to view email') || t === 'view email' || t.includes('show email')) {
+          (el as HTMLElement).click();
+          return true;
+        }
+      }
+      return false;
+    });
+
+    if (clicked) {
+      // Wait for email to reveal
+      await page.evaluate(() => new Promise((r) => setTimeout(r, 1500)));
+    }
+
+    // Extract both website URL and email from the listing page
+    const result = await page.evaluate((bizName: string) => {
       const biz = bizName.toLowerCase();
       let bestUrl = '';
       let bestScore = 0;
 
+      // ── Extract emails from the page ──
+      const allText = document.body?.innerText || '';
+      const html = document.documentElement?.outerHTML || '';
+      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+      const emailsFound = [...new Set((html.match(emailRegex) || []).filter((e: string) => {
+        try {
+          const d = e.split('@')[1];
+          return d && d.includes('.');
+        } catch { return false; }
+      }))];
+
+      // ── Extract business website URL ──
       // Method 1: Look at all anchor tags
       const anchors = document.querySelectorAll('a[href^="http"]');
       anchors.forEach((el) => {
@@ -107,95 +147,96 @@ async function extractWebsiteFromListingPage(
           const parsed = new URL(a.href);
           const domain = parsed.hostname.replace(/^www\./, '').toLowerCase();
 
-          // Skip the listing site itself, socials, maps
-          if (href.includes('yelp.com') || href.includes('yellowpages') ||
+          if (href.includes('yelp') || href.includes('yellowpages') ||
               href.includes('foursquare') || href.includes('tripadvisor') ||
-              href.includes('facebook.com') || href.includes('instagram.com') ||
-              href.includes('twitter.com') || href.includes('linkedin.com') ||
+              href.includes('facebook') || href.includes('instagram') ||
+              href.includes('twitter') || href.includes('linkedin') ||
               href.includes('mapquest') || href.includes('google.com/maps') ||
-              href.includes('bbb.org') || href.includes('infobel') ||
-              href.includes('wheree')) {
+              href.includes('bbb') || href.includes('infobel') ||
+              href.includes('wheree') || href.includes('bizpages')) {
             return;
           }
 
-          // Score: higher if business name matches
           let score = 0;
           if (href.includes(biz)) score += 10;
           if (text.includes('website') || text.includes('visit') || text.includes('www') ||
-              text.includes('official') || text.includes('site') ||
-              text.includes('go to')) {
+              text.includes('official') || text.includes('site') || text.includes('go to')) {
             score += 5;
           }
           if (text.includes(biz)) score += 8;
-
-          // Prefer clean domain over subdomain free hosts
           if (!domain.includes('blogspot') && !domain.includes('wixsite') &&
               !domain.includes('squarespace') && !domain.includes('weebly')) {
             score += 2;
           }
-
-          if (score > bestScore) {
-            bestScore = score;
-            bestUrl = a.href;
-          }
+          if (score > bestScore) { bestScore = score; bestUrl = a.href; }
         } catch {}
       });
 
-      // Method 2: Look for "Website" labeled elements (BBB and similar)
+      // Method 2: Look for "Website" label text
       if (!bestUrl) {
-        const allText = document.body?.innerText || '';
         const lines = allText.split('\n');
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i].toLowerCase().trim();
           if (line === 'website' || line.startsWith('website:') || line.startsWith('www')) {
             const urlLine = lines[i + 1]?.trim() || line.replace(/^website:?\s*/i, '').trim();
-            if (urlLine.startsWith('http')) { bestUrl = urlLine; bestScore = 1; break; }
-            if (urlLine.startsWith('www')) { bestUrl = 'https://' + urlLine; bestScore = 1; break; }
+            if (urlLine.startsWith('http')) { bestUrl = urlLine; break; }
+            if (urlLine.startsWith('www')) { bestUrl = 'https://' + urlLine; break; }
           }
         }
       }
 
-      // Method 3: Scan all visible text for http links that might be the business website
+      // Method 3: Scan all visible text for http links
       if (!bestUrl) {
-        const allText = document.body?.innerText || '';
         const httpMatches = allText.match(/https?:\/\/[^\s)+]+/g);
         if (httpMatches) {
           for (const match of httpMatches) {
             try {
               const d = new URL(match).hostname.replace(/^www\./, '').toLowerCase();
               if (!d.includes('bbb') && !d.includes('facebook') && !d.includes('yelp') && d.includes('.')) {
-                bestUrl = match;
-                bestScore = 1;
-                break;
+                bestUrl = match; break;
               }
             } catch {}
           }
         }
       }
 
-      return bestUrl || null;
+      return {
+        websiteUrl: bestUrl || null,
+        email: emailsFound.length > 0 ? emailsFound[0] : null,
+      };
     }, businessName);
 
-    if (websiteUrl) {
-      console.log(`[GoogleSearch] Extracted business website from listing: ${websiteUrl}`);
+    if (result.websiteUrl) {
+      console.log(`[GoogleSearch] Extracted business website from listing: ${result.websiteUrl}`);
     }
-    return websiteUrl;
+    if (result.email) {
+      console.log(`[GoogleSearch] Extracted email from listing: ${result.email}`);
+    }
+    return result;
   } catch (error: any) {
     console.warn(`[GoogleSearch] Failed to extract from listing: ${error?.message || error}`);
-    return null;
+    return { websiteUrl: null, email: null };
   } finally {
     if (page) { try { await page.close(); } catch {} }
   }
 }
 
 /**
+ * Result from finding a business website via Google Search.
+ */
+export interface BusinessWebsiteResult {
+  websiteUrl: string | null;
+  email: string | null;
+}
+
+/**
  * Search Google via headless Chrome, find the best matching business website.
- * If the best match is a listing site, opens that listing to find the real business site.
+ * If the best match is a listing site, opens that listing to find the real business site + email.
  */
 export async function findBusinessWebsite(
   businessName: string,
   city: string,
-): Promise<string | null> {
+): Promise<BusinessWebsiteResult> {
   let browser: Browser | null = null;
   let page: Page | null = null;
 
@@ -277,7 +318,7 @@ export async function findBusinessWebsite(
 
     if (!bestResultUrl) {
       console.log(`[GoogleSearch] No suitable result for "${businessName}"`);
-      return null;
+      return { websiteUrl: null, email: null };
     }
 
     // Check if the best result is a listing site
@@ -289,25 +330,27 @@ export async function findBusinessWebsite(
         // Close the Google search page
         if (page) { try { await page.close(); } catch {} page = null; }
 
-        // Open the listing page and extract the business website
-        const businessWebsite = await extractWebsiteFromListingPage(bestResultUrl, businessName);
-        if (businessWebsite) {
-          return businessWebsite;
+        // Open the listing page and extract the business website + email
+        const listingResult = await extractFromListingPage(bestResultUrl, businessName);
+        if (listingResult.websiteUrl) {
+          return listingResult;
+        }
+        if (listingResult.email) {
+          return { websiteUrl: null, email: listingResult.email };
         }
 
-        // If we couldn't extract from the listing, skip entirely — don't scrape the listing page
         console.log(`[GoogleSearch] Could not extract from listing, skipping`);
-        return null;
+        return { websiteUrl: null, email: null };
       }
     } catch {
       // Invalid URL, just return it
     }
 
     console.log(`[GoogleSearch] Best match for "${businessName}": ${bestResultUrl}`);
-    return bestResultUrl;
+    return { websiteUrl: bestResultUrl, email: null };
   } catch (error: any) {
     console.warn(`[GoogleSearch] Error: ${error?.message || error}`);
-    return null;
+    return { websiteUrl: null, email: null };
   } finally {
     if (page) { try { await page.close(); } catch {} }
   }
