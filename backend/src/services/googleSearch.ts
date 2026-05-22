@@ -213,6 +213,7 @@ export async function findBusinessWebsite(
       const skipDomains = [
         'mapquest.com', 'mapquest.ca', 'maps.google.com', 'mappy.com',
         'openstreetmap.org', 'waze.com', 'here.com', 'tomtom.com',
+        'linkedin.com', 'linkedin.ca',
       ];
 
       function isListing(domain: string): boolean {
