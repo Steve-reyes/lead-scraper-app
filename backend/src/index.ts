@@ -19,7 +19,6 @@ import { v4 as uuidv4 } from 'uuid';
 import searchRouter from './routes/search';
 import enrichRouter from './routes/enrich';
 import enrichDeepRouter from './routes/enrichDeep';
-import enrichLinkedInRouter from './routes/enrichLinkedIn';
 import { searchGoogleMaps } from './services/googleMaps';
 import { enrichLeadBatch } from './workers/enrichmentWorker';
 import { globalDeduplicator } from './services/deduplicator';
@@ -70,7 +69,6 @@ export { sendToClient, broadcast, wsClients };
 app.use('/api', searchRouter);
 app.use('/api/enrich', enrichRouter);
 app.use('/api/enrich', enrichDeepRouter);
-app.use('/api/enrich', enrichLinkedInRouter);
 
 // ── WebSocket Server ──
 const wss = new WebSocketServer({ port: WS_PORT });

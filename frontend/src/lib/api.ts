@@ -149,25 +149,6 @@ export async function triggerDeepBatchEnrich(leads: Lead[], clientId?: string): 
 }
 
 /**
- * Trigger LinkedIn + directories browser enrichment.
- * Uses Chrome CDP + FlareSolverr to scrape LinkedIn, Cylex, Kompass, Hotfrog, Bing Places.
- */
-export async function triggerLinkedInEnrich(leads: Lead[], clientId?: string): Promise<{ success: boolean; total: number; message: string }> {
-  const response = await fetch(`${API_BASE}/api/enrich/linkedin`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ leads, clientId }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `HTTP ${response.status}`);
-  }
-
-  return response.json();
-}
-
-/**
  * Enrich a single lead via REST (synchronous, for non-streaming use).
  */
 export async function enrichLead(lead: Lead): Promise<EnrichResult> {

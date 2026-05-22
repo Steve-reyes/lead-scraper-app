@@ -16,10 +16,9 @@ import {
   Clock,
   Globe,
   Filter,
-  Linkedin,
 } from 'lucide-react';
 import type { Lead, WSMessage } from '@/lib/types';
-import { connectWebSocket, triggerBatchEnrich, triggerDeepBatchEnrich, triggerLinkedInEnrich } from '@/lib/api';
+import { connectWebSocket, triggerBatchEnrich, triggerDeepBatchEnrich } from '@/lib/api';
 
 /** Enrichment status for the current page */
 type EnrichPageStatus = 'idle' | 'enriching' | 'complete' | 'error';
@@ -286,33 +285,6 @@ export default function EnrichPage() {
     }
   }, [allLeads, selectedIds]);
 
-  // LinkedIn + Browser enrich selected leads
-  const handleLinkedInEnrichSelected = useCallback(async () => {
-    const selectedLeads = allLeads.filter((l) => selectedIds.has(l.id));
-    if (selectedLeads.length === 0) return;
-
-    setEnrichStatus('enriching');
-    setStatusMessage(`LinkedIn-enriching ${selectedLeads.length} leads via browser...`);
-
-    const waitForWs = () =>
-      new Promise<void>((resolve) => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) { resolve(); return; }
-        const check = setInterval(() => {
-          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) { clearInterval(check); resolve(); }
-        }, 100);
-        setTimeout(() => { clearInterval(check); resolve(); }, 5000);
-      });
-
-    await waitForWs();
-
-    try {
-      await triggerLinkedInEnrich(selectedLeads, clientIdRef.current || undefined);
-    } catch (error: any) {
-      setEnrichStatus('error');
-      setStatusMessage(`Error: ${error.message}`);
-    }
-  }, [allLeads, selectedIds]);
-
   // Enrich selected leads
   const handleEnrichSelected = useCallback(async () => {
     const selectedLeads = allLeads.filter((l) => selectedIds.has(l.id));
@@ -396,18 +368,6 @@ export default function EnrichPage() {
                   <><Loader2 className="w-4 h-4 animate-spin" /> Deep Enriching...</>
                 ) : (
                   <><Globe className="w-4 h-4" /> Deep Enrich ({selectedIds.size})</>
-                )}
-              </button>
-
-              <button
-                onClick={handleLinkedInEnrichSelected}
-                disabled={selectedIds.size === 0 || isEnriching}
-                className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:from-gray-300 disabled:to-gray-300 text-white text-sm font-semibold rounded-lg transition-colors disabled:cursor-not-allowed"
-              >
-                {isEnriching ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Browser Enrich...</>
-                ) : (
-                  <><Linkedin className="w-4 h-4" /> LinkedIn ({selectedIds.size})</>
                 )}
               </button>
 
