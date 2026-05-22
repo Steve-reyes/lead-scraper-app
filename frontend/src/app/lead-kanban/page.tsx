@@ -112,6 +112,19 @@ export default function LeadKanbanPage() {
 
   const totalLeads = groups.reduce((sum, g) => sum + g.leads.length, 0);
 
+  const stageCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const s of PIPELINE_STAGES) counts[s.id] = 0;
+    for (const g of groups) {
+      for (const l of g.leads) {
+        const k = l.kanbanStatus || 'new';
+        if (counts[k] !== undefined) counts[k]++;
+        else counts['new']++;
+      }
+    }
+    return counts;
+  }, [groups]);
+
   return (
     <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
@@ -120,7 +133,9 @@ export default function LeadKanbanPage() {
         <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0">
           <div>
             <h1 className="text-lg font-bold text-gray-900">Lead Pipeline</h1>
-            <p className="text-xs text-gray-500 mt-0.5">{totalLeads} leads across {PIPELINE_STAGES.length} stages</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+  {totalLeads} leads · New: {stageCounts['new'] || 0} · Contacted: {stageCounts['contacted'] || 0} · Qualified: {stageCounts['qualified'] || 0} · Won: {stageCounts['closed'] || 0} · Lost: {stageCounts['lost'] || 0} · Incomplete: {stageCounts['incomplete'] || 0}
+</p>
           </div>
         </header>
 
