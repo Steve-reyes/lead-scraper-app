@@ -4,7 +4,6 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
-const LOGIN_PASSWORD = 'leadscraper2024';
 const PUBLIC_PATHS = ['/login'];
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -22,8 +21,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    const pw = localStorage.getItem('app-password') || 'leadscraper2024';
     const token = localStorage.getItem('auth-token');
-    if (token === LOGIN_PASSWORD) {
+    if (token === pw) {
       setStatus('auth');
     } else {
       setStatus('noauth');

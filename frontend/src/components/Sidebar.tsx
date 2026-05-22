@@ -55,6 +55,7 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
     { id: 'lists', label: 'Saved Lists', icon: List, path: '/saved-lists' },
     { id: 'kanban', label: 'Lead Pipeline', icon: Columns, path: '/lead-kanban' },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
+    { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
   ];
 
   const handleNav = (item: NavItem) => {

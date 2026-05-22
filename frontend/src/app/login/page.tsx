@@ -4,24 +4,25 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shield, Eye, EyeOff } from 'lucide-react';
 
-const LOGIN_PASSWORD = 'leadscraper2024';
-
 export default function LoginPage() {
   const router = useRouter();
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
 
+  const getCurrentPassword = () => localStorage.getItem('app-password') || 'leadscraper2024';
+
   useEffect(() => {
-    if (localStorage.getItem('auth-token') === LOGIN_PASSWORD) {
+    if (localStorage.getItem('auth-token') === getCurrentPassword()) {
       router.push('/');
     }
   }, [router]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === LOGIN_PASSWORD) {
-      localStorage.setItem('auth-token', LOGIN_PASSWORD);
+    const currentPw = getCurrentPassword();
+    if (password === currentPw) {
+      localStorage.setItem('auth-token', currentPw);
       router.push('/');
     } else {
       setError('Invalid password');
