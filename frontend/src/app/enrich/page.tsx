@@ -83,6 +83,8 @@ export default function EnrichPage() {
   const [listCollapsed, setListCollapsed] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortField, setSortField] = useState<string>('');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   // WebSocket refs
   const wsRef = useRef<WebSocket | null>(null);
@@ -195,19 +197,58 @@ export default function EnrichPage() {
     };
   }, []);
 
+  const sortLeads = (leads: Lead[]) => {
+    if (!sortField) return leads;
+    return [...leads].sort((a, b) => {
+      let aVal = '';
+      let bVal = '';
+      if (sortField === 'status') {
+        aVal = a.enrichmentStatus || '';
+        bVal = b.enrichmentStatus || '';
+      } else if (sortField === 'name') {
+        aVal = (a.businessName || '').toLowerCase();
+        bVal = (b.businessName || '').toLowerCase();
+      } else if (sortField === 'phone') {
+        aVal = (a.phone || '').toLowerCase();
+        bVal = (b.phone || '').toLowerCase();
+      } else if (sortField === 'website') {
+        aVal = (a.website || '').toLowerCase();
+        bVal = (b.website || '').toLowerCase();
+      } else if (sortField === 'email') {
+        aVal = (a.email || '').toLowerCase();
+        bVal = (b.email || '').toLowerCase();
+      }
+      if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
+
   // Filtered leads based on search query
   const filteredLeads = useMemo(() => {
-    if (!searchQuery.trim()) return allLeads;
-    const q = searchQuery.toLowerCase();
-    return allLeads.filter(
-      (l) =>
-        l.businessName.toLowerCase().includes(q) ||
-        (l.phone || '').includes(q) ||
-        (l.website || '').toLowerCase().includes(q) ||
-        (l.email || '').toLowerCase().includes(q) ||
-        (l.address || '').toLowerCase().includes(q),
-    );
-  }, [allLeads, searchQuery]);
+    let result = allLeads;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = allLeads.filter(
+        (l) =>
+          l.businessName.toLowerCase().includes(q) ||
+          (l.phone || '').includes(q) ||
+          (l.website || '').toLowerCase().includes(q) ||
+          (l.email || '').toLowerCase().includes(q) ||
+          (l.address || '').toLowerCase().includes(q),
+      );
+    }
+    return sortLeads(result);
+  }, [allLeads, searchQuery, sortField, sortDir]);
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  };
 
   // Count enrichment stats
   const stats = useMemo(() => {
@@ -459,11 +500,16 @@ export default function EnrichPage() {
                           {allSelected ? <CheckSquare className="w-4 h-4 text-accent-500" /> : <Square className="w-4 h-4" />}
                         </button>
                       </th>
-                      <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Business Name</th>
-                      <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Phone</th>
-                      <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Website</th>
-                      <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Email</th>
-                      <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 select-none" onClick={() => handleSort('name')}>
+                        Business Name {sortField === 'name' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}</th>
+                      <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 select-none" onClick={() => handleSort('phone')}>
+                        Phone {sortField === 'phone' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}</th>
+                      <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 select-none" onClick={() => handleSort('website')}>
+                        Website {sortField === 'website' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}</th>
+                      <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 select-none" onClick={() => handleSort('email')}>
+                        Email {sortField === 'email' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}</th>
+                      <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 select-none" onClick={() => handleSort('status')}>
+                        Status {sortField === 'status' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-panel-border">
