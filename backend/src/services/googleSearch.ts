@@ -93,6 +93,7 @@ async function extractWebsiteFromListingPage(
       let bestUrl = '';
       let bestScore = 0;
 
+      // Method 1: Look at all anchor tags
       const anchors = document.querySelectorAll('a[href^="http"]');
       anchors.forEach((el) => {
         const a = el as HTMLAnchorElement;
@@ -108,7 +109,8 @@ async function extractWebsiteFromListingPage(
               href.includes('foursquare') || href.includes('tripadvisor') ||
               href.includes('facebook.com') || href.includes('instagram.com') ||
               href.includes('twitter.com') || href.includes('linkedin.com') ||
-              href.includes('mapquest') || href.includes('google.com/maps')) {
+              href.includes('mapquest') || href.includes('google.com/maps') ||
+              href.includes('bbb.org')) {
             return;
           }
 
@@ -116,7 +118,8 @@ async function extractWebsiteFromListingPage(
           let score = 0;
           if (href.includes(biz)) score += 10;
           if (text.includes('website') || text.includes('visit') || text.includes('www') ||
-              text.includes('official') || text.includes('site')) {
+              text.includes('official') || text.includes('site') ||
+              text.includes('go to')) {
             score += 5;
           }
           if (text.includes(biz)) score += 8;
@@ -133,6 +136,38 @@ async function extractWebsiteFromListingPage(
           }
         } catch {}
       });
+
+      // Method 2: Look for "Website" labeled elements (BBB and similar)
+      if (!bestUrl) {
+        const allText = document.body?.innerText || '';
+        const lines = allText.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].toLowerCase().trim();
+          if (line === 'website' || line.startsWith('website:') || line.startsWith('www')) {
+            const urlLine = lines[i + 1]?.trim() || line.replace(/^website:?\s*/i, '').trim();
+            if (urlLine.startsWith('http')) { bestUrl = urlLine; bestScore = 1; break; }
+            if (urlLine.startsWith('www')) { bestUrl = 'https://' + urlLine; bestScore = 1; break; }
+          }
+        }
+      }
+
+      // Method 3: Scan all visible text for http links that might be the business website
+      if (!bestUrl) {
+        const allText = document.body?.innerText || '';
+        const httpMatches = allText.match(/https?:\/\/[^\s)+]+/g);
+        if (httpMatches) {
+          for (const match of httpMatches) {
+            try {
+              const d = new URL(match).hostname.replace(/^www\./, '').toLowerCase();
+              if (!d.includes('bbb') && !d.includes('facebook') && !d.includes('yelp') && d.includes('.')) {
+                bestUrl = match;
+                bestScore = 1;
+                break;
+              }
+            } catch {}
+          }
+        }
+      }
 
       return bestUrl || null;
     }, businessName);
@@ -174,11 +209,16 @@ export async function findBusinessWebsite(
     await page.evaluate(() => new Promise((r) => setTimeout(r, 2000)));
 
     // Find the best result URL from Google
-    const bestResultUrl = await page.evaluate((bizName: string) => {
+    const bestResultUrl = await page.evaluate((bizName: string, listingDomains: string[]) => {
       const skipDomains = [
         'mapquest.com', 'mapquest.ca', 'maps.google.com', 'mappy.com',
         'openstreetmap.org', 'waze.com', 'here.com', 'tomtom.com',
       ];
+
+      function isListing(domain: string): boolean {
+        const d = domain.replace(/^www\./, '').toLowerCase();
+        return listingDomains.some((ld) => d === ld || d.endsWith('.' + ld));
+      }
 
       function getScore(url: string, linkText: string): number {
         try {
@@ -198,6 +238,8 @@ export async function findBusinessWebsite(
           }
           const parts = domain.split('.');
           if (parts.length > 3) score -= 2;
+          // PENALTY: listing/directory sites score lower than the real business site
+          if (isListing(domain)) score -= 15;
           return score;
         } catch { return -1; }
       }
@@ -219,7 +261,7 @@ export async function findBusinessWebsite(
         }
       });
       return best.score > 0 ? best.url : null;
-    }, businessName);
+    }, businessName, LISTING_DOMAINS);
 
     if (!bestResultUrl) {
       console.log(`[GoogleSearch] No suitable result for "${businessName}"`);
