@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Compass,
   BarChart3,
+  Columns,
   CheckCircle2,
   X,
   Menu,
@@ -52,6 +53,7 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
     { id: 'enrich', label: 'Enrich Leads', icon: Sparkles, path: '/enrich' },
     { id: 'enriched', label: 'Enriched Businesses', icon: CheckCircle2, path: '/enriched-businesses' },
     { id: 'lists', label: 'Saved Lists', icon: List, path: '/saved-lists' },
+    { id: 'kanban', label: 'Lead Pipeline', icon: Columns, path: '/lead-kanban' },
   ];
 
   const handleNav = (item: NavItem) => {
