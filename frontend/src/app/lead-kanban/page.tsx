@@ -30,63 +30,61 @@ interface Lead {
   website?: string;
   address?: string;
   kanbanStatus: string;
+  listName?: string;
+}
+
+interface EnrichedGroup {
+  listName: string;
+  leads: Lead[];
+  enrichedAt: string;
 }
 
 export default function LeadKanbanPage() {
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const [groups, setGroups] = useState<EnrichedGroup[]>([]);
   const [dragId, setDragId] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [collapsedCols, setCollapsedCols] = useState<Record<string, boolean>>({});
+  const [expandedLists, setExpandedLists] = useState<Record<string, boolean>>({});
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Load leads from enriched-businesses on mount
+  // Load enriched groups from localStorage
   useEffect(() => {
     const stored = localStorage.getItem('enriched-businesses');
     if (!stored) return;
     try {
-      const groups = JSON.parse(stored);
-      const all: Lead[] = [];
-      for (const g of groups) {
-        for (const l of (g.leads || [])) {
-          if (!all.find((x) => x.id === l.id)) {
-            all.push({ ...l, kanbanStatus: l.kanbanStatus || 'new' });
-          }
+      const parsed: EnrichedGroup[] = JSON.parse(stored);
+      for (const g of parsed) {
+        for (const l of g.leads) {
+          l.kanbanStatus = l.kanbanStatus || 'new';
+          l.listName = g.listName;
         }
       }
-      setLeads(all);
+      setGroups(parsed);
+      // Expand all by default
+      const expanded: Record<string, boolean> = {};
+      for (const g of parsed) expanded[g.listName] = true;
+      setExpandedLists(expanded);
     } catch {}
   }, []);
 
-  // Persist kanbanStatus to localStorage on change
+  // Persist kanbanStatus changes back to localStorage
   useEffect(() => {
-    if (leads.length === 0) return;
+    if (groups.length === 0) return;
     try {
-      const stored = localStorage.getItem('enriched-businesses');
-      if (!stored) return;
-      const groups = JSON.parse(stored);
-      for (const g of groups) {
-        for (const l of (g.leads || [])) {
-          const update = leads.find((x) => x.id === l.id);
-          if (update) l.kanbanStatus = update.kanbanStatus;
-        }
-      }
       localStorage.setItem('enriched-businesses', JSON.stringify(groups));
     } catch {}
-  }, [leads]);
+  }, [groups]);
 
-  const grouped = useMemo(() => {
-    const map: Record<string, Lead[]> = {};
-    for (const s of PIPELINE_STAGES) map[s.id] = [];
-    for (const l of leads) {
-      const s = l.kanbanStatus || 'new';
-      if (map[s]) map[s].push(l);
-      else map['new'].push(l);
-    }
-    return map;
-  }, [leads]);
-
-  const moveLead = (leadId: string, toStage: string) => {
-    setLeads((prev) =>
-      prev.map((l) => (l.id === leadId ? { ...l, kanbanStatus: toStage } : l)),
+  const moveLead = (listName: string, leadId: string, toStage: string) => {
+    setGroups((prev) =>
+      prev.map((g) => {
+        if (g.listName !== listName) return g;
+        return {
+          ...g,
+          leads: g.leads.map((l) =>
+            l.id === leadId ? { ...l, kanbanStatus: toStage } : l,
+          ),
+        };
+      }),
     );
   };
 
@@ -97,8 +95,8 @@ export default function LeadKanbanPage() {
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (stageId: string) => {
-    if (dragId) moveLead(dragId, stageId);
+  const handleDrop = (listName: string, stageId: string) => {
+    if (dragId) moveLead(listName, dragId, stageId);
     setDragId(null);
   };
 
@@ -106,7 +104,7 @@ export default function LeadKanbanPage() {
     if (navigator.clipboard) navigator.clipboard.writeText(t);
   };
 
-  const totalLeads = leads.length;
+  const totalLeads = groups.reduce((sum, g) => sum + g.leads.length, 0);
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -120,112 +118,156 @@ export default function LeadKanbanPage() {
           </div>
         </header>
 
-        {/* Kanban Board */}
-        <div className="flex-1 overflow-x-auto p-4">
-          <div className="flex gap-4 h-full min-w-[1000px]">
-            {PIPELINE_STAGES.map((stage) => {
-              const stageLeads = grouped[stage.id] || [];
-              return (
-                <div
-                  key={stage.id}
-                  className="flex-1 min-w-[200px] max-w-[320px] flex flex-col bg-gray-100/70 rounded-xl border border-gray-200"
-                  onDragOver={handleDragOver}
-                  onDrop={() => handleDrop(stage.id)}
-                >
-                  {/* Column header */}
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-2.5 h-2.5 rounded-full ${stage.color}`} />
-                      <h3 className="text-sm font-semibold text-gray-800">{stage.label}</h3>
-                      <span className="text-xs text-gray-400 font-medium ml-1">{stageLeads.length}</span>
-                    </div>
-                    <button
-                      onClick={() =>
-                        setCollapsed((p) => ({ ...p, [stage.id]: !p[stage.id] }))
-                      }
-                      className="text-gray-400 hover:text-gray-600"
-                    >
-                      {collapsed[stage.id] ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </button>
-                  </div>
+        {/* Kanban Board — grouped by list */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {groups.length === 0 && (
+            <div className="flex items-center justify-center h-64 text-sm text-gray-400">
+              No enriched leads yet. Save leads from the Enrich page first.
+            </div>
+          )}
+          {groups.map((group) => {
+            const perStage: Record<string, Lead[]> = {};
+            for (const s of PIPELINE_STAGES) perStage[s.id] = [];
+            for (const l of group.leads) {
+              const s = l.kanbanStatus || 'new';
+              if (perStage[s]) perStage[s].push(l);
+              else perStage['new'].push(l);
+            }
+            const isExpanded = expandedLists[group.listName] !== false;
 
-                  {/* Cards */}
-                  <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                    {!collapsed[stage.id] &&
-                      stageLeads.map((lead) => (
-                        <div
-                          key={lead.id}
-                          draggable
-                          onDragStart={() => handleDragStart(lead.id)}
-                          className={`bg-white rounded-lg border border-gray-200 p-3 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing ${dragId === lead.id ? 'opacity-50 ring-2 ring-purple-400' : ''}`}
-                        >
-                          {/* Business name */}
-                          <div className="flex items-start justify-between gap-2 mb-2">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <Building2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                              <p className="text-sm font-medium text-gray-900 truncate">{lead.businessName}</p>
+            return (
+              <div key={group.listName} className="bg-white rounded-xl border border-gray-200 shadow-sm">
+                {/* List header */}
+                <button
+                  onClick={() =>
+                    setExpandedLists((p) => ({
+                      ...p,
+                      [group.listName]: !isExpanded,
+                    }))
+                  }
+                  className="w-full flex items-center justify-between px-5 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    {isExpanded ? (
+                      <ChevronDown className="w-4 h-4 text-gray-400" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-gray-400" />
+                    )}
+                    <h2 className="text-sm font-bold text-gray-800">{group.listName}</h2>
+                    <span className="text-xs text-gray-400">{group.leads.length} leads</span>
+                  </div>
+                  <span className="text-[11px] text-gray-400">
+                    New: {(perStage['new'] || []).length} · Contacted: {(perStage['contacted'] || []).length} · Won: {(perStage['closed'] || []).length}
+                  </span>
+                </button>
+
+                {/* Kanban columns for this list */}
+                {isExpanded && (
+                  <div className="overflow-x-auto">
+                    <div className="flex gap-3 p-3 min-w-[900px]">
+                      {PIPELINE_STAGES.map((stage) => {
+                        const stageLeads = perStage[stage.id] || [];
+                        return (
+                          <div
+                            key={stage.id}
+                            className="flex-1 min-w-[170px] max-w-[260px] flex flex-col bg-gray-50 rounded-lg border border-gray-100"
+                            onDragOver={handleDragOver}
+                            onDrop={() => handleDrop(group.listName, stage.id)}
+                          >
+                            {/* Column header */}
+                            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
+                              <div className="flex items-center gap-1.5">
+                                <div className={`w-2 h-2 rounded-full ${stage.color}`} />
+                                <span className="text-xs font-semibold text-gray-700">{stage.label}</span>
+                                <span className="text-[11px] text-gray-400 ml-0.5">{stageLeads.length}</span>
+                              </div>
+                              <button
+                                onClick={() =>
+                                  setCollapsedCols((p) => ({ ...p, [stage.id]: !p[stage.id] }))
+                                }
+                                className="text-gray-300 hover:text-gray-500"
+                              >
+                                {collapsedCols[stage.id] ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+
+                            {/* Cards */}
+                            <div className="flex-1 overflow-y-auto p-1.5 space-y-1.5 max-h-[400px]">
+                              {!collapsedCols[stage.id] &&
+                                stageLeads.map((lead) => (
+                                  <div
+                                    key={lead.id}
+                                    draggable
+                                    onDragStart={() => handleDragStart(lead.id)}
+                                    className={`bg-white rounded-lg border border-gray-200 p-2.5 shadow-sm hover:shadow transition-all cursor-grab active:cursor-grabbing ${dragId === lead.id ? 'opacity-50 ring-2 ring-purple-400' : ''}`}
+                                  >
+                                    {/* Business name */}
+                                    <div className="flex items-start gap-1.5 mb-1.5">
+                                      <Building2 className="w-3 h-3 text-gray-400 shrink-0 mt-0.5" />
+                                      <p className="text-xs font-medium text-gray-900 truncate leading-tight">{lead.businessName}</p>
+                                    </div>
+
+                                    {/* Contact info */}
+                                    <div className="space-y-1">
+                                      {lead.phone && (
+                                        <div className="flex items-center gap-1 text-[11px] text-gray-600">
+                                          <Phone className="w-3 h-3 shrink-0 text-gray-400" />
+                                          <span className="truncate">{lead.phone}</span>
+                                          <button onClick={() => copyText(lead.phone!)} className="ml-auto text-gray-300 hover:text-gray-500 shrink-0">
+                                            <Copy className="w-2.5 h-2.5" />
+                                          </button>
+                                        </div>
+                                      )}
+                                      {lead.email && (
+                                        <div className="flex items-center gap-1 text-[11px] text-gray-600">
+                                          <Mail className="w-3 h-3 shrink-0 text-gray-400" />
+                                          <span className="truncate">{lead.email}</span>
+                                          <button onClick={() => copyText(lead.email!)} className="ml-auto text-gray-300 hover:text-gray-500 shrink-0">
+                                            <Copy className="w-2.5 h-2.5" />
+                                          </button>
+                                        </div>
+                                      )}
+                                      {lead.website && (
+                                        <div className="flex items-center gap-1 text-[11px] text-gray-600">
+                                          <Globe className="w-3 h-3 shrink-0 text-gray-400" />
+                                          <a href={lead.website} target="_blank" rel="noopener noreferrer" className="truncate text-blue-500 hover:underline max-w-[120px]">
+                                            {lead.website.replace(/^https?:\/\//, '').replace(/\/.*$/, '')}
+                                          </a>
+                                          <ExternalLink className="w-2.5 h-2.5 shrink-0 text-gray-300" />
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Stage selector */}
+                                    <div className="mt-1.5 pt-1.5 border-t border-gray-50">
+                                      <select
+                                        value={lead.kanbanStatus}
+                                        onChange={(e) => moveLead(group.listName, lead.id, e.target.value)}
+                                        className="w-full text-[10px] text-gray-500 bg-gray-50 border border-gray-200 rounded px-1.5 py-1 cursor-pointer focus:outline-none focus:ring-1 focus:ring-purple-400"
+                                      >
+                                        {PIPELINE_STAGES.map((s) => (
+                                          <option key={s.id} value={s.id}>{s.label}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </div>
+                                ))}
+
+                              {!collapsedCols[stage.id] && stageLeads.length === 0 && (
+                                <div className="flex items-center justify-center py-6 text-[11px] text-gray-400">
+                                  Drop leads here
+                                </div>
+                              )}
                             </div>
                           </div>
-
-                          {/* Contact info */}
-                          <div className="space-y-1">
-                            {lead.phone && (
-                              <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                                <Phone className="w-3 h-3 shrink-0 text-gray-400" />
-                                <span className="truncate">{lead.phone}</span>
-                                <button onClick={() => copyText(lead.phone!)} className="ml-auto text-gray-300 hover:text-gray-500 shrink-0">
-                                  <Copy className="w-3 h-3" />
-                                </button>
-                              </div>
-                            )}
-                            {lead.email && (
-                              <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                                <Mail className="w-3 h-3 shrink-0 text-gray-400" />
-                                <span className="truncate">{lead.email}</span>
-                                <button onClick={() => copyText(lead.email!)} className="ml-auto text-gray-300 hover:text-gray-500 shrink-0">
-                                  <Copy className="w-3 h-3" />
-                                </button>
-                              </div>
-                            )}
-                            {lead.website && (
-                              <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                                <Globe className="w-3 h-3 shrink-0 text-gray-400" />
-                                <a href={lead.website} target="_blank" rel="noopener noreferrer" className="truncate text-blue-600 hover:underline">
-                                  {lead.website.replace(/^https?:\/\//, '')}
-                                </a>
-                                <ExternalLink className="w-3 h-3 shrink-0 text-gray-300" />
-                              </div>
-                            )}
-                            {lead.address && (
-                              <p className="text-[11px] text-gray-400 truncate mt-1">{lead.address}</p>
-                            )}
-                          </div>
-
-                          {/* Stage selector */}
-                          <div className="mt-2 pt-2 border-t border-gray-100">
-                            <select
-                              value={lead.kanbanStatus}
-                              onChange={(e) => moveLead(lead.id, e.target.value)}
-                              className="w-full text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded-md px-2 py-1 cursor-pointer focus:outline-none focus:ring-1 focus:ring-purple-400"
-                            >
-                              {PIPELINE_STAGES.map((s) => (
-                                <option key={s.id} value={s.id}>{s.label}</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      ))}
-
-                    {!collapsed[stage.id] && stageLeads.length === 0 && (
-                      <div className="flex items-center justify-center py-8 text-xs text-gray-400">
-                        Drop leads here
-                      </div>
-                    )}
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
