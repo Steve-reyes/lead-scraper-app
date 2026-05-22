@@ -13,6 +13,7 @@ import { Lead } from '../types';
 import { scrapeWebsite } from '../services/scraper';
 import { findInDirectories, mergeDirectoryResult } from '../services/directoryFallback';
 import { findBusinessWebsite } from '../services/googleSearch';
+import { scrapeWebsiteWithBrowser } from '../services/browserScraper';
 import { detectCountry } from '../utils/validators';
 
 export type EnrichmentCallback = (lead: Lead) => void;
@@ -50,7 +51,20 @@ export async function enrichLead(
 
   if (websiteToScrape) {
     try {
+      // Step 1a: Try fast fetch-based scraper first
       const scraped = await scrapeWebsite(websiteToScrape);
+      let hasData = scraped.emails.length > 0 || scraped.phones.length > 0;
+
+      // Step 1b: If fetch scraper found nothing, use Chrome CDP for JS-rendered sites
+      if (!hasData) {
+        console.log(`[Enrich] Fetch scraper found nothing, trying Chrome CDP for ${websiteToScrape}`);
+        const browserScraped = await scrapeWebsiteWithBrowser(websiteToScrape);
+        scraped.emails.push(...browserScraped.emails);
+        scraped.phones.push(...browserScraped.phones);
+        scraped.emails = [...new Set(scraped.emails)];
+        scraped.phones = [...new Set(scraped.phones)];
+        hasData = scraped.emails.length > 0 || scraped.phones.length > 0;
+      }
 
       if (scraped.emails.length > 0 && !enriched.email) {
         enriched.email = scraped.emails[0];
