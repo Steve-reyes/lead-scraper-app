@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ChevronRight,
   MoreVertical,
+  AlertCircle,
 } from 'lucide-react';
 
 const PIPELINE_STAGES = [
@@ -20,6 +21,7 @@ const PIPELINE_STAGES = [
   { id: 'qualified', label: 'Qualified', color: 'bg-green-500' },
   { id: 'closed', label: 'Closed Won', color: 'bg-emerald-600' },
   { id: 'lost', label: 'Lost', color: 'bg-red-500' },
+  { id: 'incomplete', label: 'Incomplete', color: 'bg-orange-400' },
 ];
 
 interface Lead {
@@ -157,7 +159,7 @@ export default function LeadKanbanPage() {
                     <span className="text-xs text-gray-400">{group.leads.length} leads</span>
                   </div>
                   <span className="text-[11px] text-gray-400">
-                    New: {(perStage['new'] || []).length} · Contacted: {(perStage['contacted'] || []).length} · Won: {(perStage['closed'] || []).length}
+                    New: {(perStage['new'] || []).length} · Contacted: {(perStage['contacted'] || []).length} · Lost: {(perStage['lost'] || []).length} · Incomplete: {(perStage['incomplete'] || []).length}
                   </span>
                 </button>
 
@@ -237,6 +239,18 @@ export default function LeadKanbanPage() {
                                         </div>
                                       )}
                                     </div>
+
+                                    {/* Missing data badges — only for Incomplete stage */}
+                                    {stage.id === 'incomplete' && (
+                                      <div className="flex flex-wrap gap-1 mt-1">
+                                        {!lead.phone && <span className="text-[10px] font-medium bg-red-100 text-red-600 px-1.5 py-0.5 rounded">No Phone</span>}
+                                        {!lead.email && <span className="text-[10px] font-medium bg-red-100 text-red-600 px-1.5 py-0.5 rounded">No Email</span>}
+                                        {!lead.website && <span className="text-[10px] font-medium bg-red-100 text-red-600 px-1.5 py-0.5 rounded">No Website</span>}
+                                        {lead.phone && lead.email && lead.website && (
+                                          <span className="text-[10px] font-medium bg-green-100 text-green-600 px-1.5 py-0.5 rounded">Complete</span>
+                                        )}
+                                      </div>
+                                    )}
 
                                     {/* Stage selector */}
                                     <div className="mt-1.5 pt-1.5 border-t border-gray-50">
