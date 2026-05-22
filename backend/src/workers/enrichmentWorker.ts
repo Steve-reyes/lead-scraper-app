@@ -19,6 +19,48 @@ import { detectCountry } from '../utils/validators';
 export type EnrichmentCallback = (lead: Lead) => void;
 
 /**
+ * Pick the best email from a list — prefers same-domain as the business website.
+ * Falls back to generic providers (gmail, yahoo), then first available.
+ */
+function pickMainEmail(emails: string[], websiteUrl?: string): string | undefined {
+  if (!emails || emails.length === 0) return undefined;
+  if (emails.length === 1) return emails[0];
+
+  let bizDomain: string | undefined;
+  if (websiteUrl) {
+    try {
+      bizDomain = new URL(websiteUrl).hostname.replace(/^www\./, '').toLowerCase();
+    } catch {}
+  }
+
+  const GENERIC_PROVIDERS = [
+    'gmail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
+    'outlook.com', 'live.com', 'msn.com', 'icloud.com',
+    'protonmail.com', 'proton.me', 'aol.com', 'mail.com',
+    'zoho.com', 'yandex.com', 'gmx.com',
+  ];
+
+  // Prefer emails matching the business domain
+  if (bizDomain) {
+    const sameDomain = emails.filter((e) => {
+      const domain = e.split('@')[1]?.toLowerCase();
+      return domain && (domain === bizDomain || domain.endsWith('.' + bizDomain));
+    });
+    if (sameDomain.length > 0) return sameDomain[0];
+  }
+
+  // Fall back to generic providers
+  const generic = emails.filter((e) => {
+    const domain = e.split('@')[1]?.toLowerCase();
+    return domain && GENERIC_PROVIDERS.includes(domain);
+  });
+  if (generic.length > 0) return generic[0];
+
+  // Last resort
+  return emails[0];
+}
+
+/**
  * Run full enrichment on a single lead — website scrape + all directories.
  * Reports each state update via the callback for real-time streaming.
  */
@@ -66,12 +108,15 @@ export async function enrichLead(
         hasData = scraped.emails.length > 0 || scraped.phones.length > 0;
       }
 
-      if (scraped.emails.length > 0 && !enriched.email) {
-        enriched.email = scraped.emails[0];
+      if (!enriched.email) {
+        const bestEmail = pickMainEmail(scraped.emails, websiteToScrape);
+        if (bestEmail) enriched.email = bestEmail;
       }
 
       if (scraped.phones.length > 0 && !enriched.phone) {
-        enriched.phone = scraped.phones[0];
+        // Pick the first valid phone (not fax, not too short)
+        const validPhones = scraped.phones.filter((p) => p.replace(/[\s.-]/g, '').length >= 10);
+        enriched.phone = validPhones.length > 0 ? validPhones[0] : scraped.phones[0];
       }
 
       if (scraped.socials.linkedin || scraped.socials.facebook || scraped.socials.instagram || scraped.socials.twitter) {
