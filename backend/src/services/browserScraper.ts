@@ -1,6 +1,7 @@
 /**
  * Puppeteer-based website scraper — handles JS-rendered content.
  * Falls back to this when the basic fetch scraper returns no data.
+ * Mimics human browsing: random delays, viewport sizes, scrolls.
  * Skips Cloudflare-protected sites (too memory-intensive to bypass).
  */
 
@@ -61,8 +62,8 @@ function extractEmails(text: string): string[] {
  */
 function extractPhones(text: string): string[] {
   const regexes = [
-    /(?:\+1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g, // +1 (123) 456-7890
-    /\+\d{1,3}\s?\d{6,14}/g, // international
+    /(?:\+1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g,
+    /\+\d{1,3}\s?\d{6,14}/g,
   ];
   const phones: string[] = [];
   for (const r of regexes) {
@@ -72,9 +73,8 @@ function extractPhones(text: string): string[] {
   return [...new Set(phones)];
 }
 
-/**
- * Check if a page is showing a Cloudflare challenge.
- */
+// ── Cloudflare detection ──
+
 function isCloudflareChallenge(title: string, bodyText: string, html: string): boolean {
   const lower = (title + ' ' + bodyText).toLowerCase();
   if (lower.includes('just a moment') || lower.includes('security verification') ||
@@ -84,10 +84,43 @@ function isCloudflareChallenge(title: string, bodyText: string, html: string): b
   return false;
 }
 
+// ── Human-like browsing helpers ──
+
 /**
- * Scrape a website using headless Chrome CDP.
- * Handles JS-rendered content that the basic fetch scraper misses.
- * Skips Cloudflare-protected sites to save memory.
+ * Random delay between min and max milliseconds.
+ */
+function randomDelay(minMs: number, maxMs: number): Promise<void> {
+  const ms = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Random viewport size to avoid consistent fingerprinting.
+ */
+function randomViewport(): { width: number; height: number } {
+  const widths = [1280, 1366, 1440, 1536, 1600, 1920];
+  const heights = [720, 768, 800, 900, 1024];
+  return {
+    width: widths[Math.floor(Math.random() * widths.length)],
+    height: heights[Math.floor(Math.random() * heights.length)],
+  };
+}
+
+/**
+ * Scroll down a random amount to mimic human reading.
+ */
+async function humanScroll(page: Page): Promise<void> {
+  try {
+    const amount = Math.floor(Math.random() * 300) + 100;
+    await page.evaluate((y: number) => window.scrollBy(0, y), amount);
+    await randomDelay(300, 800);
+  } catch {}
+}
+
+/**
+ * Scrape a website using headless Chrome CDP with human-like behavior.
+ * Adds random delays between pages, varied viewports, and scrolls.
+ * Skips Cloudflare-protected sites.
  */
 export async function scrapeWebsiteWithBrowser(
   websiteUrl: string,
@@ -114,17 +147,26 @@ export async function scrapeWebsiteWithBrowser(
       let page: Page | null = null;
       try {
         page = await browser.newPage();
+        const vp = randomViewport();
+        await page.setViewport(vp);
         await page.setUserAgent(USER_AGENT);
+
+        // Human-like 2-4s delay before navigating to next page
+        await randomDelay(2000, 4000);
+
         await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: PAGE_TIMEOUT });
-        await page.evaluate(() => new Promise((r) => setTimeout(r, 1000)));
+
+        // 1-2.5s delay after load + scroll
+        await randomDelay(1000, 2500);
+        await humanScroll(page);
 
         const title = await page.title();
         const content = await page.evaluate(() => document.body.innerText);
         const html = await page.evaluate(() => document.documentElement.outerHTML || '');
 
-        // Skip Cloudflare-protected sites — too memory-intensive
+        // Skip Cloudflare-protected sites
         if (isCloudflareChallenge(title, content || '', html)) {
-          console.log(`[BrowserScraper] Cloudflare detected on ${pageUrl}, skipping (memory-intensive)`);
+          console.log(`[BrowserScraper] Cloudflare detected on ${pageUrl}, skipping`);
           throw new Error('cloudflare lock');
         }
 
@@ -134,9 +176,8 @@ export async function scrapeWebsiteWithBrowser(
         allEmails.push(...emails);
         allPhones.push(...phones);
       } catch (innerErr: any) {
-        // Propagate Cloudflare lock signal — don't swallow
         if (innerErr?.message === 'cloudflare lock') throw innerErr;
-        // Other errors: page might not exist, skip
+        // Other errors: page might not exist, skip silently
       } finally {
         if (page) { try { await page.close(); } catch {} }
       }
