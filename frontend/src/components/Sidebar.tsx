@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   X,
   Menu,
+  LogOut,
 } from 'lucide-react';
 
 interface NavItem {
@@ -36,7 +37,6 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Prevent body scroll when mobile menu is open
   useEffect(() => {
     if (mobileOpen) {
       document.body.style.overflow = 'hidden';
@@ -59,7 +59,6 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
   const handleNav = (item: NavItem) => {
     if (item.path !== '#') {
       router.push(item.path);
-      // Close mobile menu after navigation
       setMobileOpen(false);
     }
   };
@@ -67,7 +66,6 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
   const isActive = (item: NavItem): boolean => {
     if (item.path === '#') return false;
     if (item.path === '/') return pathname === '/';
-    // Exact match or segment match — prevents /enrich matching /enriched-businesses
     return pathname === item.path || pathname.startsWith(item.path + '/');
   };
 
@@ -77,13 +75,16 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
     onMobileToggle?.();
   };
 
+  const handleSignOut = () => {
+    localStorage.removeItem('auth-token');
+    window.location.href = '/login';
+  };
+
   const sidebarContent = (
     <>
       {/* Logo */}
       <div
-        className={`h-14 flex items-center border-b border-sidebar-border ${
-          collapsed ? 'justify-center px-0' : 'px-5'
-        }`}
+        className={'h-14 flex items-center border-b border-sidebar-border' + (collapsed ? ' justify-center px-0' : ' px-5')}
       >
         {collapsed ? (
           <div className="w-8 h-8 rounded-lg bg-accent-500 flex items-center justify-center">
@@ -108,15 +109,17 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
           <button
             key={item.id}
             onClick={() => handleNav(item)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ${
-              isActive(item)
+            className={
+              'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ' +
+              (isActive(item)
                 ? 'bg-sidebar-active text-accent-400'
-                : 'text-gray-400 hover:text-gray-200 hover:bg-sidebar-hover'
-            } ${collapsed ? 'justify-center px-0' : ''}`}
+                : 'text-gray-400 hover:text-gray-200 hover:bg-sidebar-hover') +
+              (collapsed ? ' justify-center px-0' : '')
+            }
             title={collapsed ? item.label : undefined}
           >
             <item.icon
-              className={`w-4 h-4 shrink-0 ${isActive(item) ? 'text-accent-400' : ''}`}
+              className={'w-4 h-4 shrink-0' + (isActive(item) ? ' text-accent-400' : '')}
             />
             {!collapsed && <span>{item.label}</span>}
           </button>
@@ -124,12 +127,31 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
       </nav>
 
       {/* Bottom section */}
-      <div className="border-t border-sidebar-border p-3">
+      <div className="border-t border-sidebar-border p-3 space-y-1">
+        <button
+          onClick={handleSignOut}
+          className={
+            'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-red-400 hover:bg-sidebar-hover transition-colors' +
+            (collapsed ? ' justify-center' : '')
+          }
+          title="Sign out"
+        >
+          {collapsed ? (
+            <LogOut className="w-4 h-4" />
+          ) : (
+            <>
+              <LogOut className="w-4 h-4" />
+              <span>Sign Out</span>
+            </>
+          )}
+        </button>
+
         <button
           onClick={onToggle}
-          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-sidebar-hover transition-colors ${
-            collapsed ? 'justify-center' : ''
-          }`}
+          className={
+            'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-sidebar-hover transition-colors' +
+            (collapsed ? ' justify-center' : '')
+          }
         >
           {collapsed ? (
             <ChevronRight className="w-4 h-4" />
@@ -146,16 +168,17 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
 
   return (
     <>
-      {/* Desktop sidebar - hidden on mobile, visible on md+ */}
+      {/* Desktop sidebar */}
       <aside
-        className={`${
-          collapsed ? 'w-16' : 'w-60'
-        } bg-sidebar border-r border-sidebar-border flex-col transition-all duration-200 ease-in-out shrink-0 hidden md:flex`}
+        className={
+          (collapsed ? 'w-16' : 'w-60') +
+          ' bg-sidebar border-r border-sidebar-border flex-col transition-all duration-200 ease-in-out shrink-0 hidden md:flex'
+        }
       >
         {sidebarContent}
       </aside>
 
-      {/* Mobile hamburger trigger - visible only on small screens */}
+      {/* Mobile hamburger */}
       <button
         onClick={handleMobileToggle}
         className="md:hidden fixed top-3 left-3 z-50 w-9 h-9 rounded-lg bg-sidebar border border-sidebar-border flex items-center justify-center text-gray-400 hover:text-gray-200 hover:bg-sidebar-hover transition-colors shadow-lg"
@@ -164,18 +187,14 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
         {mobileOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
       </button>
 
-      {/* Mobile overlay - full screen, fixed position */}
+      {/* Mobile overlay */}
       {mobileOpen && (
         <div className="md:hidden fixed inset-0 z-40 flex">
-          {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/60"
             onClick={handleMobileToggle}
           />
-
-          {/* Sidebar panel sliding in from left */}
           <aside className="relative w-72 max-w-[85vw] bg-sidebar border-r border-sidebar-border flex flex-col overflow-y-auto">
-            {/* Logo row with close */}
             <div className="h-14 flex items-center justify-between px-5 border-b border-sidebar-border">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-accent-500 flex items-center justify-center">
@@ -194,29 +213,33 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
                 <X className="w-4 h-4" />
               </button>
             </div>
-
-            {/* Navigation */}
             <nav className="flex-1 py-3 px-2 space-y-1">
               {navItems.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => handleNav(item)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ${
-                    isActive(item)
+                  className={
+                    'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ' +
+                    (isActive(item)
                       ? 'bg-sidebar-active text-accent-400'
-                      : 'text-gray-400 hover:text-gray-200 hover:bg-sidebar-hover'
-                  }`}
+                      : 'text-gray-400 hover:text-gray-200 hover:bg-sidebar-hover')
+                  }
                 >
                   <item.icon
-                    className={`w-4 h-4 shrink-0 ${isActive(item) ? 'text-accent-400' : ''}`}
+                    className={'w-4 h-4 shrink-0' + (isActive(item) ? ' text-accent-400' : '')}
                   />
                   <span>{item.label}</span>
                 </button>
               ))}
             </nav>
-
-            {/* Bottom section */}
             <div className="border-t border-sidebar-border p-3">
+              <button
+                onClick={handleSignOut}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-red-400 hover:bg-sidebar-hover transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Sign Out</span>
+              </button>
             </div>
           </aside>
         </div>
