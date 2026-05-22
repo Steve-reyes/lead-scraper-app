@@ -218,6 +218,9 @@ export async function findBusinessWebsite(
         'mapquest.com', 'mapquest.ca', 'maps.google.com', 'mappy.com',
         'openstreetmap.org', 'waze.com', 'here.com', 'tomtom.com',
         'linkedin.com', 'linkedin.ca',
+        'instagram.com', 'facebook.com', 'facebook.ca', 'fb.com',
+        'twitter.com', 'x.com', 'tiktok.com', 'pinterest.com',
+        'youtube.com', 'youtu.be',
       ];
 
       function isListing(domain: string): boolean {
