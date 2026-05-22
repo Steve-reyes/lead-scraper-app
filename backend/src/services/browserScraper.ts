@@ -1,7 +1,7 @@
 /**
  * Puppeteer-based website scraper — handles JS-rendered content.
  * Falls back to this when the basic fetch scraper returns no data.
- * Auto-detects Cloudflare and falls through to FlareSolverr.
+ * Skips Cloudflare-protected sites (too memory-intensive to bypass).
  */
 
 import puppeteer, { Browser, Page } from 'puppeteer';
@@ -72,8 +72,9 @@ function extractPhones(text: string): string[] {
   return [...new Set(phones)];
 }
 
-// ── Cloudflare detection ──
-
+/**
+ * Check if a page is showing a Cloudflare challenge.
+ */
 function isCloudflareChallenge(title: string, bodyText: string, html: string): boolean {
   const lower = (title + ' ' + bodyText).toLowerCase();
   if (lower.includes('just a moment') || lower.includes('security verification') ||
@@ -84,68 +85,9 @@ function isCloudflareChallenge(title: string, bodyText: string, html: string): b
 }
 
 /**
- * Scrape a website through FlareSolverr (bypasses Cloudflare).
- */
-export async function scrapeWithFlareSolverr(
-  websiteUrl: string,
-): Promise<{ emails: string[]; phones: string[] }> {
-  const baseUrl = websiteUrl.startsWith('http') ? websiteUrl : `https://${websiteUrl}`;
-
-  const pagesToScrape = [
-    baseUrl,
-    `${baseUrl.replace(/\/$/, '')}/contact`,
-    `${baseUrl.replace(/\/$/, '')}/about`,
-    `${baseUrl.replace(/\/$/, '')}/contact-us`,
-    `${baseUrl.replace(/\/$/, '')}/about-us`,
-  ];
-
-  const allEmails: string[] = [];
-  const allPhones: string[] = [];
-
-  const FLARESOLVER_URL = process.env.FLARESOLVER_URL || 'http://127.0.0.1:8191/v1';
-
-  for (const pageUrl of pagesToScrape) {
-    try {
-      const resp = await fetch(FLARESOLVER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cmd: 'request.get',
-          url: pageUrl,
-          maxTimeout: 30000,
-        }),
-      });
-
-      const data = await resp.json() as any;
-      if (data.status !== 'ok') {
-        console.warn(`[FlareSolverr] Failed for ${pageUrl}: ${data.message || data.status}`);
-        continue;
-      }
-
-      const html = data.solution?.response || '';
-      if (!html) continue;
-
-      const emails = extractEmails(html);
-      const textOnly = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-      const phones = extractPhones(textOnly);
-
-      allEmails.push(...emails);
-      allPhones.push(...phones);
-    } catch (err: any) {
-      console.warn(`[FlareSolverr] Error scraping ${pageUrl}: ${err?.message || err}`);
-    }
-  }
-
-  return {
-    emails: [...new Set(allEmails)],
-    phones: [...new Set(allPhones)],
-  };
-}
-
-/**
  * Scrape a website using headless Chrome CDP.
  * Handles JS-rendered content that the basic fetch scraper misses.
- * Auto-detects Cloudflare challenge and falls through to FlareSolverr.
+ * Skips Cloudflare-protected sites to save memory.
  */
 export async function scrapeWebsiteWithBrowser(
   websiteUrl: string,
@@ -161,7 +103,6 @@ export async function scrapeWebsiteWithBrowser(
   ];
 
   let browser: Browser | null = null;
-  let hitCloudflare = false;
 
   try {
     browser = await getBrowser();
@@ -181,11 +122,10 @@ export async function scrapeWebsiteWithBrowser(
         const content = await page.evaluate(() => document.body.innerText);
         const html = await page.evaluate(() => document.documentElement.outerHTML || '');
 
-        // Check for Cloudflare challenge
+        // Skip Cloudflare-protected sites — too memory-intensive
         if (isCloudflareChallenge(title, content || '', html)) {
-          console.log(`[BrowserScraper] Cloudflare detected on ${pageUrl}, falling to FlareSolverr`);
-          hitCloudflare = true;
-          break;
+          console.log(`[BrowserScraper] Cloudflare detected on ${pageUrl}, skipping (memory-intensive)`);
+          return { emails: [], phones: [] };
         }
 
         const emails = extractEmails(html);
@@ -198,11 +138,6 @@ export async function scrapeWebsiteWithBrowser(
       } finally {
         if (page) { try { await page.close(); } catch {} }
       }
-    }
-
-    if (hitCloudflare) {
-      console.log(`[BrowserScraper] Falling through to FlareSolverr for ${url}`);
-      return scrapeWithFlareSolverr(websiteUrl);
     }
 
     return {
