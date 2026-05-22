@@ -14,6 +14,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
+  Save,
   Globe,
   Filter,
 } from 'lucide-react';
@@ -258,6 +259,29 @@ export default function EnrichPage() {
     });
   }, []);
 
+  // Manually save enriched leads from this list to enriched-businesses
+  const saveToEnriched = useCallback(() => {
+    const completed = allLeads.filter((l) => l.phone || l.email || l.website);
+    if (completed.length === 0) {
+      alert('No leads with data to save.');
+      return;
+    }
+    const listName = activeListName || localStorage.getItem('enrich-session-name') || 'Unnamed List';
+    const entry = {
+      listName,
+      leads: completed,
+      enrichedAt: new Date().toISOString(),
+    };
+    try {
+      const existing = JSON.parse(localStorage.getItem('enriched-businesses') || '[]');
+      const idx = existing.findIndex((g: any) => g.listName === listName);
+      if (idx >= 0) existing[idx] = entry;
+      else existing.push(entry);
+      localStorage.setItem('enriched-businesses', JSON.stringify(existing));
+      alert(`Saved ${completed.length} leads to enriched businesses!`);
+    } catch {}
+  }, [allLeads, activeListName]);
+
   // Deep enrich selected leads (uses FlareSolverr for directory sites)
   const handleDeepEnrichSelected = useCallback(async () => {
     const selectedLeads = allLeads.filter((l) => selectedIds.has(l.id));
@@ -412,10 +436,16 @@ export default function EnrichPage() {
                 className="ml-2 text-xs text-gray-400 hover:text-gray-600 transition-colors"
               >{listCollapsed ? 'Expand' : 'Collapse'}</button>
               {!isEnriching && (
-                <button
-                  onClick={() => { setActiveListName(null); setListCollapsed(false); }}
-                  className="ml-auto text-xs text-gray-400 hover:text-gray-600 transition-colors"
-                >Dismiss</button>
+                <>
+                  <button
+                    onClick={() => saveToEnriched()}
+                    className="ml-auto text-xs text-purple-600 hover:text-purple-700 font-medium transition-colors flex items-center gap-1"
+                  ><Save className="w-3 h-3" /> Save to Enriched</button>
+                  <button
+                    onClick={() => { setActiveListName(null); setListCollapsed(false); }}
+                    className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                  >Dismiss</button>
+                </>
               )}
             </div>
           </div>
