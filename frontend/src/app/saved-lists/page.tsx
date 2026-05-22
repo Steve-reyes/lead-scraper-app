@@ -64,6 +64,19 @@ export default function SavedListsPage() {
     setLoadedLeads(savedLists[listName]?.leads || []);
   };
 
+  const handleDeleteList = (listName: string) => {
+    setSavedLists((prev) => {
+      const next = { ...prev };
+      delete next[listName];
+      localStorage.setItem('saved-lists', JSON.stringify(next));
+      return next;
+    });
+    if (expandedList === listName) {
+      setExpandedList(null);
+      setLoadedLeads([]);
+    }
+  };
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
@@ -137,15 +150,28 @@ export default function SavedListsPage() {
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {expandedList !== list.name && (
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleLoadLeads(list.name);
-                            }}
-                            className="text-xs font-medium text-accent-600 hover:text-accent-700 px-3 py-1.5 rounded-md bg-accent-50 hover:bg-accent-100 transition-colors"
-                          >
-                            Load Leads
-                          </span>
+                          <>
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`Delete "${list.name}" from saved lists?`)) {
+                                  handleDeleteList(list.name);
+                                }
+                              }}
+                              className="text-xs font-medium text-red-500 hover:text-red-600 px-3 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+                            >
+                              Delete
+                            </span>
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleLoadLeads(list.name);
+                              }}
+                              className="text-xs font-medium text-accent-600 hover:text-accent-700 px-3 py-1.5 rounded-md bg-accent-50 hover:bg-accent-100 transition-colors"
+                            >
+                              Load Leads
+                            </span>
+                          </>
                         )}
                         {expandedList === list.name ? (
                           <ChevronDown className="w-4 h-4 text-gray-400" />
