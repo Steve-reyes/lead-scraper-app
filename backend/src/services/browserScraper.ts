@@ -125,7 +125,7 @@ export async function scrapeWebsiteWithBrowser(
         // Skip Cloudflare-protected sites — too memory-intensive
         if (isCloudflareChallenge(title, content || '', html)) {
           console.log(`[BrowserScraper] Cloudflare detected on ${pageUrl}, skipping (memory-intensive)`);
-          return { emails: [], phones: [] };
+          throw new Error('cloudflare lock');
         }
 
         const emails = extractEmails(html);
@@ -133,8 +133,10 @@ export async function scrapeWebsiteWithBrowser(
 
         allEmails.push(...emails);
         allPhones.push(...phones);
-      } catch {
-        // page might not exist, skip
+      } catch (innerErr: any) {
+        // Propagate Cloudflare lock signal — don't swallow
+        if (innerErr?.message === 'cloudflare lock') throw innerErr;
+        // Other errors: page might not exist, skip
       } finally {
         if (page) { try { await page.close(); } catch {} }
       }

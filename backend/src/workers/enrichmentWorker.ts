@@ -135,9 +135,14 @@ export async function enrichLead(
         enriched.sources.push({ type: 'website_scrape', name: 'Web Scrape', url: websiteToScrape });
       }
     } catch (error: any) {
-      enriched.enrichmentError = enriched.enrichmentError
-        ? `${enriched.enrichmentError} | Website scrape failed: ${error?.message || 'Unknown'}`
-        : `Website scrape failed: ${error?.message || 'Unknown'}`;
+      const msg = error?.message || 'Unknown';
+      if (msg === 'cloudflare lock') {
+        enriched.enrichmentError = 'cloudflare lock';
+      } else {
+        enriched.enrichmentError = enriched.enrichmentError
+          ? `${enriched.enrichmentError} | Website scrape failed: ${msg}`
+          : `Website scrape failed: ${msg}`;
+      }
     }
   }
 
