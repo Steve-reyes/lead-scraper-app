@@ -8,10 +8,10 @@
 
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { DirectoryResult } from '../types';
+import { getRandomUserAgent } from '../utils/userAgents';
 
 const CHROME_CDP = process.env.CHROME_CDP_URL || 'ws://127.0.0.1:3012';
 const PAGE_TIMEOUT = 25000;
-const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 let browserInstance: Browser | null = null;
@@ -58,7 +58,7 @@ async function searchGoogleMapsDetail(
   try {
     browser = await getBrowser();
     page = await browser.newPage();
-    await page.setUserAgent(USER_AGENT);
+    await page.setUserAgent(getRandomUserAgent());
 
     const query = encodeURIComponent(`${businessName} ${city}`);
     await page.goto(`https://www.google.com/maps/search/${query}/`, {

@@ -22,6 +22,7 @@ import enrichDeepRouter from './routes/enrichDeep';
 import { searchGoogleMaps } from './services/googleMaps';
 import { enrichLeadBatch } from './workers/enrichmentWorker';
 import { globalDeduplicator } from './services/deduplicator';
+import { loadLeads, saveLead, clearLeads } from './store';
 import { SearchRequest, SearchProgress, Lead } from './types';
 
 const PORT = process.env.PORT || 3001;
@@ -40,6 +41,16 @@ app.use(express.json({ limit: '5mb' }));
 // Health check
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Persisted leads
+app.get('/api/leads', (_req, res) => {
+  res.json({ success: true, leads: loadLeads() });
+});
+
+app.delete('/api/leads', (_req, res) => {
+  clearLeads();
+  res.json({ success: true });
 });
 
 // ── WebSocket Manager ──
@@ -167,6 +178,7 @@ wss.on('connection', (ws: WebSocket) => {
                 payload: { lead },
               }));
             }
+            saveLead(lead);
           };
 
           try {
@@ -258,6 +270,9 @@ export async function runStreamingSearch(
         });
       }
     }
+
+    // Save all leads to persistent storage
+    uniqueLeads.forEach(l => saveLead(l));
 
     // Done — no enrichment phase
     sendMessage({

@@ -6,14 +6,16 @@
  * If the best match is a listing/directory site (yelp, yellowpages, etc.),
  * it opens that listing page and extracts the business's own website link.
  * Then returns that real business website for scraping.
+ *
+ * Human-like delays, random viewports, and random user agents to avoid
+ * bot detection and rate limiting.
  */
 
 import puppeteer, { Browser, Page } from 'puppeteer';
+import { getRandomUserAgent } from '../utils/userAgents';
 
 const CHROME_CDP = process.env.CHROME_CDP_URL || 'ws://127.0.0.1:3012';
 const PAGE_TIMEOUT = 20000;
-const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Listing/directory sites — if the best result is one of these,
 // we open the listing page and look for the business's own website link
@@ -35,6 +37,39 @@ const LISTING_DOMAINS = [
 ];
 
 let browserInstance: Browser | null = null;
+
+// ── Human-like browsing helpers ──
+
+/**
+ * Random delay between min and max milliseconds.
+ */
+function randomDelay(minMs: number, maxMs: number): Promise<void> {
+  const ms = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Random viewport size to avoid consistent fingerprinting.
+ */
+function randomViewport(): { width: number; height: number } {
+  const widths = [1280, 1366, 1440, 1536, 1600, 1920];
+  const heights = [720, 768, 800, 900, 1024];
+  return {
+    width: widths[Math.floor(Math.random() * widths.length)],
+    height: heights[Math.floor(Math.random() * heights.length)],
+  };
+}
+
+/**
+ * Scroll down a random amount to mimic human reading.
+ */
+async function humanScroll(page: Page): Promise<void> {
+  try {
+    const amount = Math.floor(Math.random() * 300) + 100;
+    await page.evaluate((y: number) => window.scrollBy(0, y), amount);
+    await randomDelay(300, 800);
+  } catch {}
+}
 
 async function getBrowserWSEndpoint(): Promise<string> {
   let endpoint = CHROME_CDP;
@@ -95,14 +130,21 @@ async function extractFromListingPage(
   try {
     browser = await getBrowser();
     page = await browser.newPage();
-    await page.setUserAgent(USER_AGENT);
+    const vp = randomViewport();
+    await page.setViewport(vp);
+    await page.setUserAgent(getRandomUserAgent());
+
+    // Random 2-4s delay before navigation like a real person
+    await randomDelay(2000, 4000);
 
     await page.goto(listingUrl, {
       waitUntil: 'networkidle2',
       timeout: PAGE_TIMEOUT,
     });
 
-    await page.evaluate(() => new Promise((r) => setTimeout(r, 2000)));
+    // Random 2-4s delay after page load + scroll
+    await randomDelay(2000, 4000);
+    await humanScroll(page);
 
     // Click "Click to view email" buttons to reveal hidden emails
     const clicked = await page.evaluate(() => {
@@ -118,9 +160,12 @@ async function extractFromListingPage(
     });
 
     if (clicked) {
-      // Wait for email to reveal
-      await page.evaluate(() => new Promise((r) => setTimeout(r, 1500)));
+      // Random 2-3s wait for email to reveal
+      await randomDelay(2000, 3000);
     }
+
+    // Random 1-2s before extraction
+    await randomDelay(1000, 2000);
 
     // Extract both website URL and email from the listing page
     const result = await page.evaluate((bizName: string) => {
@@ -251,7 +296,12 @@ export async function findBusinessWebsite(
   try {
     browser = await getBrowser();
     page = await browser.newPage();
-    await page.setUserAgent(USER_AGENT);
+    const vp = randomViewport();
+    await page.setViewport(vp);
+    await page.setUserAgent(getRandomUserAgent());
+
+    // Random 2-4s delay before navigation
+    await randomDelay(2000, 4000);
 
     const query = encodeURIComponent(`"${businessName}" ${city}`);
     await page.goto(`https://www.google.com/search?q=${query}&hl=en`, {
@@ -259,7 +309,12 @@ export async function findBusinessWebsite(
       timeout: PAGE_TIMEOUT,
     });
 
-    await page.evaluate(() => new Promise((r) => setTimeout(r, 2000)));
+    // Random 3-5s delay after page load (let page render fully)
+    await randomDelay(3000, 5000);
+    // Scroll down to mimic human scanning results
+    await humanScroll(page);
+    // Additional random delay before reading results
+    await randomDelay(1000, 2000);
 
     // Find the best result URL from Google
     const bestResultUrl = await page.evaluate((bizName: string, listingDomains: string[]) => {
@@ -335,8 +390,13 @@ export async function findBusinessWebsite(
       if (isListingDomain(domain)) {
         console.log(`[GoogleSearch] Best result is a listing site: ${bestResultUrl}`);
         console.log(`[GoogleSearch] Opening listing to find real business website...`);
+        // Random 2-3s delay before closing Google page
+        await randomDelay(2000, 3000);
         // Close the Google search page
         if (page) { try { await page.close(); } catch {} page = null; }
+
+        // Random 1-2s delay before opening listing
+        await randomDelay(1000, 2000);
 
         // Open the listing page and extract the business website + email
         const listingResult = await extractFromListingPage(bestResultUrl, businessName);

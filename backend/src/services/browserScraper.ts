@@ -6,11 +6,10 @@
  */
 
 import puppeteer, { Browser, Page } from 'puppeteer';
+import { getRandomUserAgent } from '../utils/userAgents';
 
 const CHROME_CDP = process.env.CHROME_CDP_URL || 'ws://127.0.0.1:3012';
 const PAGE_TIMEOUT = 15000;
-const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 let browserInstance: Browser | null = null;
 
@@ -149,7 +148,7 @@ export async function scrapeWebsiteWithBrowser(
         page = await browser.newPage();
         const vp = randomViewport();
         await page.setViewport(vp);
-        await page.setUserAgent(USER_AGENT);
+        await page.setUserAgent(getRandomUserAgent());
 
         // Human-like 2-4s delay before navigating to next page
         await randomDelay(2000, 4000);

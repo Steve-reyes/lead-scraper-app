@@ -16,8 +16,8 @@
  */
 
 import { load } from 'cheerio';
-import { DirectoryResult } from '../types';
-import { extractEmails, extractPhones } from '../utils/validators';
+import { DirectoryResult, ScrapedContact } from '../types';
+import { extractEmails, extractPhones, extractSocials } from '../utils/validators';
 
 const FLARESOLVER_URL = process.env.FLARESOLVER_URL || 'http://127.0.0.1:8191/v1';
 const REQUEST_TIMEOUT = 30000;
@@ -367,6 +367,55 @@ async function searchBingMaps(businessName: string, city: string): Promise<Direc
 }
 
 // ── Main export: search all directories ──
+
+// ── Website Scrape Through FlareSolverr (for cloudflare bypass) ──
+
+/**
+ * Scrape a business website through FlareSolverr to bypass Cloudflare/captcha.
+ * Extracts emails, phones, and social links from the rendered HTML.
+ */
+export async function scrapeWebsiteThroughFlare(websiteUrl: string): Promise<ScrapedContact> {
+  const url = websiteUrl.startsWith('http') ? websiteUrl : `https://${websiteUrl}`;
+
+  const pagesToScrape = [
+    url,
+    `${url.replace(/\/$/, '')}/contact`,
+    `${url.replace(/\/$/, '')}/about`,
+    `${url.replace(/\/$/, '')}/contact-us`,
+    `${url.replace(/\/$/, '')}/about-us`,
+  ];
+
+  const combined: ScrapedContact = {
+    emails: [],
+    socials: {},
+    phones: [],
+  };
+
+  for (const pageUrl of pagesToScrape) {
+    try {
+      const html = await fetchThroughFlare(pageUrl, 'FlareScrape');
+      if (!html) continue;
+
+      const $ = load(html);
+      const text = $('body').text();
+
+      const emails = extractEmails(html);
+      const phones = extractPhones(text);
+      const socials = extractSocials(html, url);
+
+      combined.emails.push(...emails);
+      combined.phones.push(...phones);
+      combined.socials = { ...combined.socials, ...socials };
+    } catch {
+      // skip failed pages
+    }
+  }
+
+  combined.emails = [...new Set(combined.emails)];
+  combined.phones = [...new Set(combined.phones)];
+
+  return combined;
+}
 
 /**
  * Search all available directory sites for a business.

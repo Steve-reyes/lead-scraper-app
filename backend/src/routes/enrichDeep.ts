@@ -14,6 +14,7 @@ import { Lead } from '../types';
 import { findInDirectoriesDeep } from '../services/directoryFlare';
 import { detectCountry } from '../utils/validators';
 import { sendToClient } from '../index';
+import { saveLead } from '../store';
 
 const router = Router();
 
@@ -95,6 +96,7 @@ router.post('/deep', async (req: Request, res: Response) => {
           updatedAt: new Date().toISOString(),
         };
         enrichedLeads.push(failed);
+        saveLead(failed);
         sendMessage({ type: 'lead_enriched', payload: { lead: failed } });
       }
     }

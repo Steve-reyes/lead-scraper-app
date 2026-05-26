@@ -5,6 +5,8 @@ services:
       dockerfile: Dockerfile.backend
     container_name: lead-scraper-backend
     network_mode: "host"
+    volumes:
+      - /root/steves-dev/lead-scraper-data:/app/data
     environment:
       - PORT=4000
       - WS_PORT=4001

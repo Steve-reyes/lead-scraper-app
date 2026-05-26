@@ -121,7 +121,8 @@ async function extractWebsiteFromPlace(browser: Browser, placeUrl: string): Prom
  * Search Google Maps — collect listings, extract websites in parallel via new tabs.
  */
 export async function searchGoogleMaps(request: SearchRequest): Promise<Lead[]> {
-  const { keyword, location, maxResults = 30, radiusKm, country } = request;
+  const { keyword, location, radiusKm, country } = request;
+  const maxResults = (request.maxResults && request.maxResults > 0) ? request.maxResults : 30;
   console.log(`[GMaps] Searching for "${keyword}" in "${location}"...`);
 
   const seenNames = new Set<string>();

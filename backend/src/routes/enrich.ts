@@ -12,6 +12,7 @@ import { Router, Request, Response } from 'express';
 import { enrichLead, enrichLeadBatch } from '../workers/enrichmentWorker';
 import { Lead } from '../types';
 import { sendToClient } from '../index';
+import { saveLead } from '../store';
 
 const router = Router();
 
