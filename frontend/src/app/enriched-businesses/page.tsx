@@ -113,10 +113,11 @@ export default function EnrichedBusinessesPage() {
     setExpandedGroup(expandedGroup === name ? null : name);
   };
 
-  const forwardToScore = (lead: Lead) => {
+  const forwardToScore = (leads: Lead | Lead[]) => {
     try {
+      const items = Array.isArray(leads) ? leads : [leads];
       const existing = JSON.parse(localStorage.getItem('lead-score-queue') || '[]');
-      existing.push(lead);
+      existing.push(...items);
       localStorage.setItem('lead-score-queue', JSON.stringify(existing));
       router.push('/lead-score');
     } catch {}
@@ -206,9 +207,9 @@ export default function EnrichedBusinessesPage() {
 
                     <div className="flex items-center gap-1.5">
                       <button
-                        onClick={(e) => { e.stopPropagation(); router.push('/lead-score'); }}
+                        onClick={(e) => { e.stopPropagation(); forwardToScore(group.leads); }}
                         className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors"
-                        title="Lead Score"
+                        title="Forward all leads in this group to Lead Score"
                       >
                         <Target className="w-3.5 h-3.5" /> Score
                       </button>
