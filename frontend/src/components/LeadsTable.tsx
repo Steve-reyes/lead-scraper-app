@@ -56,6 +56,8 @@ function EnrichmentBadge({ status }: { status: EnrichmentStatus }) {
     scanning_directories: { label: 'Directories', color: 'text-amber-500', icon: Loader2 },
     complete: { label: 'Done', color: 'text-emerald-600', icon: CheckCircle2 },
     failed: { label: 'Failed', color: 'text-red-500', icon: AlertCircle },
+    cloudflare_locked: { label: 'Cloudflare', color: 'text-amber-500', icon: AlertCircle },
+    enriched: { label: 'Enriched', color: 'text-emerald-600', icon: CheckCircle2 },
   };
 
   const cfg = config[status];

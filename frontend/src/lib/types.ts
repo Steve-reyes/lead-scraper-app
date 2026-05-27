@@ -6,7 +6,7 @@ export interface LeadSource {
   url?: string;
 }
 
-export type EnrichmentStatus = 'pending' | 'scanning_website' | 'scanning_directories' | 'complete' | 'failed';
+export type EnrichmentStatus = 'pending' | 'scanning_website' | 'scanning_directories' | 'complete' | 'failed' | 'cloudflare_locked' | 'enriched';
 
 export interface SocialLinks {
   linkedin?: string;

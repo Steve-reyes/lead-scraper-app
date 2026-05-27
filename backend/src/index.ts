@@ -20,6 +20,7 @@ import searchRouter from './routes/search';
 import enrichRouter from './routes/enrich';
 import enrichDeepRouter from './routes/enrichDeep';
 import leadScoresRouter from './routes/leadScores';
+import enrichedGroupsRouter from './routes/enrichedGroups';
 import { searchGoogleMaps } from './services/googleMaps';
 import { enrichLeadBatch } from './workers/enrichmentWorker';
 import { globalDeduplicator } from './services/deduplicator';
@@ -82,6 +83,7 @@ app.use('/api', searchRouter);
 app.use('/api/enrich', enrichRouter);
 app.use('/api/enrich', enrichDeepRouter);
 app.use('/api', leadScoresRouter);
+app.use('/api', enrichedGroupsRouter);
 
 // ── WebSocket Server ──
 const wss = new WebSocketServer({ port: WS_PORT });
