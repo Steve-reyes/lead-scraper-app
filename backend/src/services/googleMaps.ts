@@ -19,14 +19,43 @@ function delay(min = 2000, max = 5000): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function scrollResultsPanel(page: Page): Promise<void> {
-  for (const sel of ['div[role="feed"]', 'div.m6QErb[aria-label*="Results"]']) {
+/**
+ * Aggressive scroll of the Google Maps results panel.
+ * Tries multiple known selectors and multiple scroll passes.
+ */
+async function scrollResultsPanel(page: Page, count: number = 1): Promise<void> {
+  const selectors = [
+    'div[role="feed"]',
+    'div.m6QErb[aria-label*="Results"]',
+    'div.m6QErb',
+    'div[aria-label*="Results"]',
+    'div[aria-label*="resultados"]',
+    'div.siAUzd',
+  ];
+
+  for (const sel of selectors) {
     const el = await page.$(sel).catch(() => null);
     if (el) {
-      await page.evaluate((s: string) => {
-        const c = document.querySelector(s);
-        if (c) c.scrollTop = c.scrollHeight;
-      }, sel);
+      for (let i = 0; i < count; i++) {
+        try {
+          await page.evaluate((s: string) => {
+            const c = document.querySelector(s);
+            if (c) {
+              // Scroll by a large chunk to trigger lazy loading
+              c.scrollTop += c.scrollHeight * 0.8;
+            }
+          }, sel);
+          await delay(300, 700);
+        } catch { break; }
+      }
+      await delay(500, 1000);
+      // Final scroll to bottom
+      try {
+        await page.evaluate((s: string) => {
+          const c = document.querySelector(s);
+          if (c) c.scrollTop = c.scrollHeight;
+        }, sel);
+      } catch {}
       return;
     }
   }
@@ -122,7 +151,7 @@ async function extractWebsiteFromPlace(browser: Browser, placeUrl: string): Prom
  */
 export async function searchGoogleMaps(request: SearchRequest): Promise<Lead[]> {
   const { keyword, location, radiusKm, country } = request;
-  const maxResults = (request.maxResults && request.maxResults > 0) ? request.maxResults : 30;
+  const maxResults = (request.maxResults && request.maxResults > 0) ? request.maxResults : 150;
   console.log(`[GMaps] Searching for "${keyword}" in "${location}"...`);
 
   const seenNames = new Set<string>();
@@ -189,11 +218,13 @@ export async function searchGoogleMaps(request: SearchRequest): Promise<Lead[]> 
     }
     await delay(2000, 4000);
 
-    // Phase 1: Scroll + collect
+    // Phase 1: Scroll + collect — aggressive scrolling
     const collectedRefs: ListingRef[] = [];
     let emptyScrolls = 0;
+    const MAX_EMPTY = 5;  // More tolerance for empty scrolls before giving up
+    let scrollPasses = 1;
 
-    while (collectedRefs.length < maxResults && emptyScrolls < 3) {
+    while (collectedRefs.length < maxResults && emptyScrolls < MAX_EMPTY) {
       const newRefs = await extractListingRefs(page);
       let added = 0;
       for (const ref of newRefs) {
@@ -206,8 +237,13 @@ export async function searchGoogleMaps(request: SearchRequest): Promise<Lead[]> 
       }
       if (added === 0) { emptyScrolls++; } else { emptyScrolls = 0; }
       console.log(`[GMaps] Collected ${collectedRefs.length}/${maxResults}`);
-      await scrollResultsPanel(page);
-      await delay(2500, 4500);
+
+      // Increase scroll aggressiveness as we go deeper
+      scrollPasses = Math.min(3, Math.floor(collectedRefs.length / 50) + 1);
+      await scrollResultsPanel(page, scrollPasses);
+
+      // Random 2-4s delay between scrolls to avoid rate limiting
+      await delay(2000, 4000);
     }
 
     console.log(`[GMaps] Collected ${collectedRefs.length} listings. Extracting websites...`);
