@@ -50,7 +50,8 @@ export default function TopBar({ onSearch, isSearching }: TopBarProps) {
             type="text"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            placeholder="e.g., Austin, TX or Berlin"
+            placeholder="e.g., Austin, TX or 123 Main St, Austin"
+            title="Use a street address for radius targeting"
             className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-panel-border rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all"
             disabled={isSearching}
           />
@@ -74,6 +75,11 @@ export default function TopBar({ onSearch, isSearching }: TopBarProps) {
               className="w-full pl-8 pr-2 py-2 bg-gray-50 border border-panel-border rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all"
               disabled={isSearching}
             />
+            {radiusKm > 0 && (
+              <p className="text-[10px] text-gray-400 mt-1 leading-tight">
+                Use a street address in Location above for radius to pinpoint
+              </p>
+            )}
           </div>
 
           {/* Country Input */}
