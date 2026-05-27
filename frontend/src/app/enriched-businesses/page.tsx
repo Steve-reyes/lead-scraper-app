@@ -16,6 +16,7 @@ import {
   Trash2,
   Download,
   Sparkles,
+  Target,
 } from 'lucide-react';
 import type { Lead } from '@/lib/types';
 
@@ -112,6 +113,15 @@ export default function EnrichedBusinessesPage() {
     setExpandedGroup(expandedGroup === name ? null : name);
   };
 
+  const forwardToScore = (lead: Lead) => {
+    try {
+      const existing = JSON.parse(localStorage.getItem('lead-score-queue') || '[]');
+      existing.push(lead);
+      localStorage.setItem('lead-score-queue', JSON.stringify(existing));
+      router.push('/lead-score');
+    } catch {}
+  };
+
   const clearAll = () => {
     localStorage.removeItem('enriched-businesses');
     setGroups([]);
@@ -194,13 +204,22 @@ export default function EnrichedBusinessesPage() {
                     </div>
                     <span className="text-xs text-gray-400">{formatDate(group.enrichedAt)}</span>
 
-                    <button
-                      onClick={(e) => { e.stopPropagation(); exportCSV(group.leads, group.listName); }}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors mr-2"
-                      title="Export CSV"
-                    >
-                      <Download className="w-3.5 h-3.5" /> Export CSV
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); router.push('/lead-score'); }}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors"
+                        title="Lead Score"
+                      >
+                        <Target className="w-3.5 h-3.5" /> Score
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); exportCSV(group.leads, group.listName); }}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                        title="Export CSV"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Export CSV
+                      </button>
+                    </div>
                   </button>
 
                   {/* Leads */}

@@ -14,6 +14,7 @@ import {
   BarChart3,
   Columns,
   CheckCircle2,
+  Target,
   X,
   Menu,
   LogOut,
@@ -54,6 +55,7 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
     { id: 'enriched', label: 'Enriched Businesses', icon: CheckCircle2, path: '/enriched-businesses' },
     { id: 'lists', label: 'Saved Lists', icon: List, path: '/saved-lists' },
     { id: 'kanban', label: 'Lead Pipeline', icon: Columns, path: '/lead-kanban' },
+    { id: 'score', label: 'Lead Score', icon: Target, path: '/lead-score' },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
     { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
   ];
