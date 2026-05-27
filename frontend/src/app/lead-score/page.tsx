@@ -51,26 +51,30 @@ const SCORE_CFG = {
     label: 'Website Quality',
     hint: 'Outdated site = needs SEO more = higher priority',
     max: 3,
+    auto: false,
     options: [
       { value: 1, label: 'Modern & mobile-friendly', desc: 'Low priority — site looks good' },
-      { value: 2, label: 'Average / basic site', desc: 'Medium — could upgrade' },
-      { value: 3, label: 'Outdated / no site', desc: 'High — needs SEO urgently' },
+      { value: 2, label: 'Mediocre', desc: 'Medium — could upgrade' },
+      { value: 3, label: 'Outdated / poor', desc: 'High — needs SEO urgently' },
     ],
   },
   reviewCount: {
     label: 'Reviews Count',
-    hint: 'Few reviews = struggling with reputation. Many reviews = established. Both are opportunities.',
+    hint: 'Under 10 reviews = struggling. 50+ reviews = established. Both are opportunities.',
     max: 3,
+    auto: true,
     options: [
-      { value: 1, label: '50+ reviews', desc: 'Established reputation' },
-      { value: 2, label: '10-49 reviews', desc: 'Growing presence' },
+      { value: 1, label: '10-49 reviews', desc: 'Some presence' },
+      { value: 2, label: 'Unknown / null', desc: 'Default medium' },
       { value: 3, label: 'Under 10 reviews', desc: 'Struggling for reputation' },
+      { value: 3, label: '50+ reviews', desc: 'Established — bigger opportunity' },
     ],
   },
   googleMapsRank: {
     label: 'Google Maps Rank',
     hint: 'Not ranking top 3 = need local SEO. Best prospect.',
     max: 2,
+    auto: false,
     options: [
       { value: 1, label: 'In top 3', desc: 'Already ranking well' },
       { value: 2, label: 'Not in top 3', desc: 'Needs local SEO help' },
@@ -80,6 +84,7 @@ const SCORE_CFG = {
     label: 'Social Media',
     hint: 'No social presence = no pipeline. Easy upsell.',
     max: 1,
+    auto: true,
     options: [
       { value: 0, label: 'Has social profiles', desc: 'Has some presence' },
       { value: 1, label: 'No social presence', desc: 'Upsell opportunity' },
@@ -89,6 +94,7 @@ const SCORE_CFG = {
     label: 'Responsiveness',
     hint: 'No answer = losing leads daily. Easy close.',
     max: 1,
+    auto: false,
     options: [
       { value: 0, label: 'Answered', desc: 'Responsive' },
       { value: 1, label: 'No answer', desc: 'Losing leads — urgent' },
@@ -96,8 +102,28 @@ const SCORE_CFG = {
   },
 };
 
-function defaultScores(): LeadScoreCriteria {
-  return { websiteQuality: 2, reviewCount: 2, googleMapsRank: 2, socialMedia: 0, responsiveness: 0 };
+function autoScore(lead: { reviewCount?: number; rating?: number; socialLinks?: { linkedin?: string } }): LeadScoreCriteria {
+  // Website Quality: default 2 (unknown). Manual override after user reviews site.
+  const websiteQuality = 2;
+
+  // Reviews Count: under 10 = 3, 10-49 = 1, 50+ = 3, unknown = 2 (default medium)
+  let reviewCount = 2;
+  if (lead.reviewCount !== undefined && lead.reviewCount !== null) {
+    if (lead.reviewCount < 10) reviewCount = 3;
+    else if (lead.reviewCount >= 50) reviewCount = 3;
+    else if (lead.reviewCount >= 10) reviewCount = 1;
+  }
+
+  // Google Maps Rank: default 2 (not in top 3 / unknown). Manual override.
+  const googleMapsRank = 2;
+
+  // Social Media: has any social link? 0 = yes, 1 = no
+  const socialMedia = (lead.socialLinks && Object.keys(lead.socialLinks).length > 0) ? 0 : 1;
+
+  // Responsiveness: default 0 (unknown). Manual override.
+  const responsiveness = 0;
+
+  return { websiteQuality, reviewCount, googleMapsRank, socialMedia, responsiveness };
 }
 
 function calcTotal(s: LeadScoreCriteria): number {
@@ -147,7 +173,7 @@ export default function LeadScorePage() {
           reviewCount: l.reviewCount,
           rating: l.rating,
           socialLinks: l.socialLinks,
-          scores: defaultScores(),
+          scores: autoScore(l),
           totalScore: 7,
           tier: 'warm' as const,
           scoredAt: new Date().toISOString(),
@@ -351,7 +377,12 @@ export default function LeadScorePage() {
                                 return (
                                   <div key={key}>
                                     <div className="flex items-center justify-between mb-1.5">
-                                      <label className="text-xs font-semibold text-gray-700">{cfg.label}</label>
+                                      <label className="text-xs font-semibold text-gray-700">
+                                        {cfg.label}
+                                        {'auto' in cfg && cfg.auto && (
+                                          <span className="ml-1.5 text-[10px] font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">auto</span>
+                                        )}
+                                      </label>
                                       <span className="text-xs text-gray-400">{entry.scores[k]}/{cfg.max}</span>
                                     </div>
                                     <p className="text-[11px] text-gray-400 mb-1.5">{cfg.hint}</p>
