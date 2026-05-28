@@ -325,6 +325,12 @@ export default function EnrichPage() {
     const selectedLeads = allLeads.filter((l) => selectedIds.has(l.id));
     if (selectedLeads.length === 0) return;
 
+    // Reset status immediately so user sees re-enrichment is happening
+    setAllLeads((prev) =>
+      prev.map((l) =>
+        selectedIds.has(l.id) ? { ...l, enrichmentStatus: 'scanning_website' as const, enrichmentError: undefined } : l
+      )
+    );
     setEnrichStatus('enriching');
     setStatusMessage(`Deep enriching ${selectedLeads.length} leads via directory sites...`);
 
@@ -379,6 +385,12 @@ export default function EnrichPage() {
     const selectedLeads = allLeads.filter((l) => selectedIds.has(l.id));
     if (selectedLeads.length === 0) return;
 
+    // Reset status immediately so user sees re-enrichment is happening
+    setAllLeads((prev) =>
+      prev.map((l) =>
+        selectedIds.has(l.id) ? { ...l, enrichmentStatus: 'scanning_website' as const, enrichmentError: undefined } : l
+      )
+    );
     setEnrichStatus('enriching');
     setStatusMessage(`Enriching ${selectedLeads.length} leads...`);
 
