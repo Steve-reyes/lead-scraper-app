@@ -1,7 +1,7 @@
 // ===== Core Lead Types =====
 
 export interface LeadSource {
-  type: 'google_maps' | 'yelp' | 'yellowpages' | 'yell' | 'website_scrape' | 'directory' | 'flare_bypass';
+  type: 'google_maps' | 'yelp' | 'yellowpages' | 'yellowpages_ca' | 'canada411' | 'yell' | 'website_scrape' | 'directory' | 'flare_bypass';
   name: string;
   url?: string;
 }

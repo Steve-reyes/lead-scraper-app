@@ -329,6 +329,72 @@ async function searchLinkedInViaGoogle(businessName: string, city: string): Prom
 
 // ── Bing Maps (business listings with contact info) ──
 
+// ── Canada411 (Canadian phone directory) ──
+
+async function searchCanada411(businessName: string, city: string): Promise<DirectoryResult | null> {
+  try {
+    const query = encodeURIComponent(`${businessName} ${city}`);
+    const url = `https://www.canada411.ca/search/?stp=${query}`;
+    const html = await fetchThroughFlare(url, 'Canada411');
+    if (!html) return null;
+
+    const $ = load(html);
+    const results = $('.listing, .result, .business, [itemtype$="/LocalBusiness"]');
+    if (!results.length) return null;
+
+    const first = results.first();
+    const ph = first.find('a[href^="tel:"], .phone, .telephone, [itemprop="telephone"]').text().trim() || undefined;
+    const pageText = html;
+    const emails = extractEmails(pageText);
+    const email = emails.length > 0 ? emails[0] : undefined;
+    const phone = ph || (extractPhones(pageText).length > 0 ? extractPhones(pageText)[0] : undefined);
+
+    if (!phone && !email) return null;
+    return { businessName, phone, email, website: undefined, source: { type: 'canada411', name: 'Canada411' } };
+  } catch { return null; }
+}
+
+// ── YellowPages.ca (Canadian business directory) ──
+
+async function searchYellowPagesCA(businessName: string, city: string): Promise<DirectoryResult | null> {
+  try {
+    const query = encodeURIComponent(`${businessName} ${city}`);
+    const url = `https://www.yellowpages.ca/search/si/1/${query}/${encodeURIComponent(city)}`;
+    const html = await fetchThroughFlare(url, 'YellowPagesCA');
+    if (!html) return null;
+
+    const $ = load(html);
+    const results = $('.listing, .result, .business, [data-qa^="listing"]');
+    if (!results.length) {
+      // Try fallback selector
+      const altResults = $('div[class*="listing"], article, .v-card');
+      if (!altResults.length) return null;
+      const first = altResults.first();
+      const ph = first.find('a[href^="tel:"], .phone, .mlr__item--phone').text().trim() || undefined;
+      const wsLink = first.find('a[href^="http"]').not('[href*="yellowpages"]').not('[href*="yp.ca"]').first();
+      const website = wsLink.attr('href')?.trim() || undefined;
+      const pageText = html;
+      const emails = extractEmails(pageText);
+      const email = emails.length > 0 ? emails[0] : undefined;
+      const phone = ph || (extractPhones(pageText).length > 0 ? extractPhones(pageText)[0] : undefined);
+      if (!phone && !email && !website) return null;
+      return { businessName, phone, email, website, source: { type: 'yellowpages_ca', name: 'YellowPages.ca' } };
+    }
+
+    const first = results.first();
+    const ph = first.find('a[href^="tel:"], .phone, .mlr__item--phone').text().trim() || undefined;
+    const wsLink = first.find('a[href^="http"]').not('[href*="yellowpages"]').not('[href*="yp.ca"]').first();
+    const website = wsLink.attr('href')?.trim() || undefined;
+    const pageText = html;
+    const emails = extractEmails(pageText);
+    const email = emails.length > 0 ? emails[0] : undefined;
+    const phone = ph || (extractPhones(pageText).length > 0 ? extractPhones(pageText)[0] : undefined);
+
+    if (!phone && !email && !website) return null;
+    return { businessName, phone, email, website, source: { type: 'yellowpages_ca', name: 'YellowPages.ca' } };
+  } catch { return null; }
+}
+
 async function searchBingMaps(businessName: string, city: string): Promise<DirectoryResult | null> {
   try {
     const query = encodeURIComponent(`${businessName} ${city}`);
@@ -437,6 +503,12 @@ export async function findInDirectoriesDeep(
   searches.push(() => searchGoogle(businessName, city));
   searches.push(() => searchLinkedInViaGoogle(businessName, city));
   searches.push(() => searchBingMaps(businessName, city));
+
+  // Canada-specific
+  if (countryLower.includes('canada') || countryLower.includes('canadá') || countryLower === 'ca') {
+    searches.push(() => searchCanada411(businessName, city));
+    searches.push(() => searchYellowPagesCA(businessName, city));
+  }
 
   // UK-specific
   if (countryLower.includes('uk') || countryLower.includes('united kingdom') || countryLower.includes('england')) {
