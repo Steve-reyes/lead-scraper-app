@@ -45,12 +45,12 @@ const SCORE_CFG: Record<string, { label: string; hint: string; max: number; auto
     ],
   },
   reviewCount: {
-    label: 'Reviews Count', hint: 'Under 10 = struggling. 50+ = established. Both are opportunities.', max: 3, auto: true,
+    label: 'Reviews Count', hint: 'Under 10 = struggling. 50+ = established. Both are opportunities.', max: 4, auto: true,
     options: [
       { value: 1, label: '10-49 reviews', desc: 'Some presence' },
       { value: 2, label: 'Unknown / null', desc: 'Default medium' },
       { value: 3, label: 'Under 10 reviews', desc: 'Struggling for reputation' },
-      { value: 3, label: '50+ reviews', desc: 'Established — bigger opportunity' },
+      { value: 4, label: '50+ reviews', desc: 'Established — bigger opportunity' },
     ],
   },
   googleMapsRank: {
@@ -83,7 +83,7 @@ function autoScore(lead: Partial<LeadScoreEntry>): LeadScoreCriteria {
   let reviewCount = 2;
   if (lead.reviewCount !== undefined && lead.reviewCount !== null) {
     if (lead.reviewCount < 10) reviewCount = 3;
-    else if (lead.reviewCount >= 50) reviewCount = 3;
+    else if (lead.reviewCount >= 50) reviewCount = 4;
     else if (lead.reviewCount >= 10) reviewCount = 1;
   }
   const googleMapsRank = 2;
