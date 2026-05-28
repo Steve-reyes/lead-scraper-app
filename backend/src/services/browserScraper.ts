@@ -10,6 +10,7 @@ import { getRandomUserAgent } from '../utils/userAgents';
 
 const CHROME_CDP = process.env.CHROME_CDP_URL || 'ws://127.0.0.1:3012';
 const PAGE_TIMEOUT = 15000;
+const NEW_PAGE_TIMEOUT = 8000; // max wait for browser.newPage()
 
 let browserInstance: Browser | null = null;
 
@@ -143,9 +144,14 @@ export async function scrapeWebsiteWithBrowser(
     const allPhones: string[] = [];
 
     for (const pageUrl of pagesToScrape) {
-      let page: Page | null = null;
+      let page!: Page;
       try {
-        page = await browser.newPage();
+        const p = await Promise.race([
+          browser.newPage(),
+          new Promise<any>((_, rej) => setTimeout(() => rej(new Error('newPage timeout')), NEW_PAGE_TIMEOUT)),
+        ]);
+        if (!p) throw new Error('newPage returned null');
+        page = p;
         const vp = randomViewport();
         await page.setViewport(vp);
         await page.setUserAgent(getRandomUserAgent());
@@ -187,6 +193,9 @@ export async function scrapeWebsiteWithBrowser(
       phones: [...new Set(allPhones)],
     };
   } catch (error: any) {
+    if (error?.message === 'cloudflare lock') {
+      throw error;
+    }
     console.warn(`[BrowserScraper] Error: ${error?.message || error}`);
     return { emails: [], phones: [] };
   } finally {

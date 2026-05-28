@@ -268,7 +268,14 @@ export async function enrichLeadBatch(
     if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
     const chunk = leads.slice(i, i + concurrency);
     const chunkResults = await Promise.allSettled(
-      chunk.map((leadItem) => enrichLead(leadItem, onUpdate))
+      chunk.map((leadItem) =>
+        Promise.race([
+          enrichLead(leadItem, onUpdate),
+          new Promise<never>((_, rej) =>
+            setTimeout(() => rej(new Error('Lead enrichment timed out after 90s')), 90000)
+          ),
+        ])
+      )
     );
 
     chunkResults.forEach((result, index) => {
@@ -309,7 +316,14 @@ export async function enrichLeadBatch(
       if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
       const chunk = cloudflareLeads.slice(i, i + concurrency);
       const chunkResults = await Promise.allSettled(
-        chunk.map((leadItem) => enrichWithFlare(leadItem, onUpdate))
+        chunk.map((leadItem) =>
+          Promise.race([
+            enrichWithFlare(leadItem, onUpdate),
+            new Promise<never>((_, rej) =>
+              setTimeout(() => rej(new Error('Flare enrichment timed out after 60s')), 60000)
+            ),
+          ])
+        )
       );
 
       chunkResults.forEach((result, index) => {
