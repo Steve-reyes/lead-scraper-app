@@ -128,6 +128,8 @@ export default function LeadScorePage() {
   const [searchQ, setSearchQ] = useState('');
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+  const [showGuide, setShowGuide] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   // Load saved scores from API + pending from localStorage
   const loadSaved = useCallback(async () => {
@@ -545,9 +547,11 @@ export default function LeadScorePage() {
 
         {/* ── Scoring Guide ── */}
         <div className="mt-8 p-5 bg-gradient-to-br from-purple-50/60 to-accent-50/40 border border-purple-100/60 rounded-xl">
-          <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-3">
+          <button onClick={() => setShowGuide(!showGuide)} className="w-full text-sm font-semibold text-gray-700 flex items-center gap-2 mb-3">
             <BarChart3 className="w-4 h-4 text-purple-500" /> About Lead Scoring
-          </h3>
+            {showGuide ? <ChevronUp className="w-4 h-4 ml-auto text-gray-400" /> : <ChevronDown className="w-4 h-4 ml-auto text-gray-400" />}
+          </button>
+          {showGuide && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-gray-500 leading-relaxed">
             <div className="space-y-2">
               <p className="font-medium text-gray-600">Score Tiers</p>
@@ -570,6 +574,7 @@ export default function LeadScorePage() {
               <p className="pt-1">Scores auto-calculate from enrichment data. The <strong className="text-gray-600">Analyze Scorer</strong> button runs them in bulk. Click <strong className="text-gray-600">Edit</strong> to override any score manually.</p>
             </div>
           </div>
+          )}
         </div>
 
       </div>
