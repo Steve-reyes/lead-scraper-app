@@ -127,12 +127,10 @@ export async function scrapeWebsiteWithBrowser(
 ): Promise<{ emails: string[]; phones: string[] }> {
   const url = websiteUrl.startsWith('http') ? websiteUrl : `https://${websiteUrl}`;
 
+  // Only try homepage + first contact page to avoid CDP overload
   const pagesToScrape = [
     url,
     `${url.replace(/\/$/, '')}/contact`,
-    `${url.replace(/\/$/, '')}/about`,
-    `${url.replace(/\/$/, '')}/contact-us`,
-    `${url.replace(/\/$/, '')}/about-us`,
   ];
 
   let browser: Browser | null = null;

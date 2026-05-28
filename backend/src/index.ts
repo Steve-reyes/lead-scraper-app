@@ -193,7 +193,8 @@ wss.on('connection', (ws: WebSocket) => {
           };
 
           try {
-            const enriched = await enrichLeadBatch(leads, onUpdate, 5, ac.signal);
+            // Lower concurrency to 2 to avoid CDP overload
+            const enriched = await enrichLeadBatch(leads, onUpdate, 2, ac.signal);
             if (!ac.signal.aborted && ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({
                 type: 'enrich_complete',

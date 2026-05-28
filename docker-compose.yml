@@ -12,6 +12,16 @@ services:
       - WS_PORT=4001
       - NODE_ENV=production
       - CHROME_CDP_URL=ws://127.0.0.1:3012
+      - FLARESOLVER_URL=http://127.0.0.1:8191/v1
+    restart: unless-stopped
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: lead-scraper-flaresolverr
+    network_mode: "host"
+    environment:
+      - LOG_LEVEL=info
+      - CAPTCHA_SOLVER=none
     restart: unless-stopped
 
   frontend:
