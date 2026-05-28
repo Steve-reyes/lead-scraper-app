@@ -329,6 +329,60 @@ async function searchLinkedInViaGoogle(businessName: string, city: string): Prom
 
 // ── Bing Maps (business listings with contact info) ──
 
+// ── YellowPages.com.au (Australian business directory) ──
+
+async function searchYellowPagesAU(businessName: string, city: string): Promise<DirectoryResult | null> {
+  try {
+    const query = encodeURIComponent(`${businessName} ${city}`);
+    const url = `https://www.yellowpages.com.au/search/listings?clue=${query}`;
+    const html = await fetchThroughFlare(url, 'YellowPagesAU');
+    if (!html) return null;
+
+    const $ = load(html);
+    const results = $('.listing, .result, [data-testid="listing"], .MuiPaper-root');
+    if (!results.length) return null;
+
+    const first = results.first();
+    const ph = first.find('a[href^="tel:"], .contact-phone, [itemprop="telephone"]').text().trim() || undefined;
+    const wsLink = first.find('a.contact-url, a[rel="noopener noreferrer"]').first();
+    const website = wsLink.attr('href')?.trim() || undefined;
+    const pageText = html;
+    const emails = extractEmails(pageText);
+    const email = emails.length > 0 ? emails[0] : undefined;
+    const phone = ph || (extractPhones(pageText).length > 0 ? extractPhones(pageText)[0] : undefined);
+
+    if (!phone && !email && !website) return null;
+    return { businessName, phone, email, website, source: { type: 'yellowpages_au', name: 'YellowPages.com.au' } };
+  } catch { return null; }
+}
+
+// ── TrueLocal (Australian business directory) ──
+
+async function searchTrueLocal(businessName: string, city: string): Promise<DirectoryResult | null> {
+  try {
+    const query = encodeURIComponent(`${businessName} ${city}`);
+    const url = `https://www.truelocal.com.au/find?q=${query}`;
+    const html = await fetchThroughFlare(url, 'TrueLocal');
+    if (!html) return null;
+
+    const $ = load(html);
+    const results = $('.business-card, .listing, .result, [itemtype$="/LocalBusiness"]');
+    if (!results.length) return null;
+
+    const first = results.first();
+    const ph = first.find('a[href^="tel:"], .phone, [itemprop="telephone"]').text().trim() || undefined;
+    const wsLink = first.find('a[href^="http"]').not('[href*="truelocal"]').first();
+    const website = wsLink.attr('href')?.trim() || undefined;
+    const pageText = html;
+    const emails = extractEmails(pageText);
+    const email = emails.length > 0 ? emails[0] : undefined;
+    const phone = ph || (extractPhones(pageText).length > 0 ? extractPhones(pageText)[0] : undefined);
+
+    if (!phone && !email && !website) return null;
+    return { businessName, phone, email, website, source: { type: 'truelocal', name: 'TrueLocal' } };
+  } catch { return null; }
+}
+
 // ── Canada411 (Canadian phone directory) ──
 
 async function searchCanada411(businessName: string, city: string): Promise<DirectoryResult | null> {
@@ -508,6 +562,12 @@ export async function findInDirectoriesDeep(
   if (countryLower.includes('canada') || countryLower.includes('canadá') || countryLower === 'ca') {
     searches.push(() => searchCanada411(businessName, city));
     searches.push(() => searchYellowPagesCA(businessName, city));
+  }
+
+  // Australia-specific
+  if (countryLower.includes('australia') || countryLower === 'au') {
+    searches.push(() => searchYellowPagesAU(businessName, city));
+    searches.push(() => searchTrueLocal(businessName, city));
   }
 
   // UK-specific
