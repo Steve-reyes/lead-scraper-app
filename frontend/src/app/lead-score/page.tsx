@@ -48,7 +48,7 @@ const SCORE_CFG: Record<string, { label: string; hint: string; max: number; auto
     label: 'Reviews Count', hint: 'Under 10 = struggling. 50+ = established. Both are opportunities.', max: 4, auto: true,
     options: [
       { value: 1, label: '10-49 reviews', desc: 'Some presence' },
-      { value: 2, label: 'Unknown / null', desc: 'Default medium' },
+      { value: 2, label: '⚠ No data', desc: 'Enrichment missed — review manually' },
       { value: 3, label: 'Under 10 reviews', desc: 'Struggling for reputation' },
       { value: 4, label: '50+ reviews', desc: 'Established — bigger opportunity' },
     ],
