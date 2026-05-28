@@ -95,6 +95,9 @@ export default function EnrichPage() {
   // Keep a mutable leads map for WS updates
   const leadsMapRef = useRef<Map<string, Lead>>(new Map());
 
+  // Track last clicked index for shift-click range selection
+  const lastClickedIndexRef = useRef<number | null>(null);
+
   // Load imported leads from Saved Lists
   useEffect(() => {
     try {
@@ -288,14 +291,29 @@ export default function EnrichPage() {
     [filteredLeads],
   );
 
-  const handleSelectOne = useCallback((id: string, checked: boolean) => {
+  const handleSelectOne = useCallback((id: string, checked: boolean, index?: number, shiftKey?: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
+
+      if (shiftKey && index !== undefined && lastClickedIndexRef.current !== null) {
+        // Shift-click: select range from last clicked to current
+        const start = Math.min(lastClickedIndexRef.current, index);
+        const end = Math.max(lastClickedIndexRef.current, index);
+        for (let i = start; i <= end; i++) {
+          next.add(filteredLeads[i].id);
+        }
+      } else {
+        // Normal click
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+
+      if (index !== undefined) {
+        lastClickedIndexRef.current = index;
+      }
       return next;
     });
-  }, []);
+  }, [filteredLeads]);
 
   // Manually save enriched leads from this list to enriched-businesses
   const saveToEnriched = useCallback(() => {
@@ -588,10 +606,10 @@ export default function EnrichPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-panel-border">
-                    {filteredLeads.map((lead) => (
+                    {filteredLeads.map((lead, idx) => (
                       <tr key={lead.id} className={`hover:bg-gray-50/60 transition-colors ${selectedIds.has(lead.id) ? 'bg-purple-50/40' : ''}`}>
                         <td className="px-3 py-3">
-                          <button onClick={() => handleSelectOne(lead.id, !selectedIds.has(lead.id))} className="text-gray-400 hover:text-gray-600 transition-colors">
+                          <button onClick={(e) => handleSelectOne(lead.id, !selectedIds.has(lead.id), idx, e.shiftKey)} className="text-gray-400 hover:text-gray-600 transition-colors">
                             {selectedIds.has(lead.id) ? <CheckSquare className="w-4 h-4 text-purple-500" /> : <Square className="w-4 h-4" />}
                           </button>
                         </td>
