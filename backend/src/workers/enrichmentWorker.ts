@@ -256,13 +256,16 @@ async function enrichWithFlare(
 export async function enrichLeadBatch(
   leads: Lead[],
   onUpdate: EnrichmentCallback,
-  concurrency: number = 3
+  concurrency: number = 3,
+  signal?: AbortSignal
 ): Promise<Lead[]> {
   // ── Pass 1: Normal enrichment ──
   console.log(`[Enrich] Pass 1 — normal enrichment for ${leads.length} leads`);
   const pass1Results: Lead[] = [];
 
   for (let i = 0; i < leads.length; i += concurrency) {
+    // Check cancel
+    if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
     const chunk = leads.slice(i, i + concurrency);
     const chunkResults = await Promise.allSettled(
       chunk.map((leadItem) => enrichLead(leadItem, onUpdate))
@@ -293,12 +296,17 @@ export async function enrichLeadBatch(
   );
 
   if (cloudflareLeads.length > 0) {
+    // Check cancel before pass 2
+    if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+
     console.log(`[Enrich] Pass 2 — retrying ${cloudflareLeads.length} cloudflare-blocked leads through FlareSolverr`);
 
     // 5-10s delay before starting pass 2 (real person pauses between attempts)
     await randomDelay(5000, 10000);
 
     for (let i = 0; i < cloudflareLeads.length; i += concurrency) {
+      // Check cancel
+      if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
       const chunk = cloudflareLeads.slice(i, i + concurrency);
       const chunkResults = await Promise.allSettled(
         chunk.map((leadItem) => enrichWithFlare(leadItem, onUpdate))

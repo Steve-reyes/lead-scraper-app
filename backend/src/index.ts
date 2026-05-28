@@ -58,6 +58,8 @@ app.delete('/api/leads', (_req, res) => {
 // ── WebSocket Manager ──
 // Maps clientId → WebSocket for targeted streaming
 const wsClients = new Map<string, WebSocket>();
+// Track active enrichment per client for cancel support
+const enrichAbort = new Map<string, AbortController>();
 
 function sendToClient(clientId: string, data: object): void {
   const ws = wsClients.get(clientId);
@@ -170,12 +172,17 @@ wss.on('connection', (ws: WebSocket) => {
             return;
           }
 
+          // Store abort controller for cancel support
+          const ac = new AbortController();
+          enrichAbort.set(clientId, ac);
+
           ws.send(JSON.stringify({
             type: 'progress',
             payload: { message: `Starting enrichment for ${leads.length} leads...` },
           }));
 
           const onUpdate = (lead: Lead) => {
+            if (ac.signal.aborted) return;
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({
                 type: 'lead_enriched',
@@ -186,8 +193,8 @@ wss.on('connection', (ws: WebSocket) => {
           };
 
           try {
-            const enriched = await enrichLeadBatch(leads, onUpdate, 5);
-            if (ws.readyState === WebSocket.OPEN) {
+            const enriched = await enrichLeadBatch(leads, onUpdate, 5, ac.signal);
+            if (!ac.signal.aborted && ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({
                 type: 'enrich_complete',
                 payload: {
@@ -197,12 +204,36 @@ wss.on('connection', (ws: WebSocket) => {
               }));
             }
           } catch (error: any) {
-            if (ws.readyState === WebSocket.OPEN) {
+            if (error?.name === 'AbortError') {
+              console.log(`[Enrich] Enrichment cancelled for client ${clientId}`);
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                  type: 'enrich_cancelled',
+                  payload: { message: 'Enrichment stopped by user.' },
+                }));
+              }
+            } else if (!ac.signal.aborted && ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({
                 type: 'error',
                 payload: { error: `Batch enrichment failed: ${error?.message || 'Unknown error'}` },
               }));
             }
+          } finally {
+            enrichAbort.delete(clientId);
+          }
+          break;
+        }
+
+        case 'cancel_enrich': {
+          const ac = enrichAbort.get(clientId);
+          if (ac) {
+            ac.abort();
+            enrichAbort.delete(clientId);
+            console.log(`[WS] Enrichment cancelled by client ${clientId}`);
+            ws.send(JSON.stringify({
+              type: 'enrich_cancelled',
+              payload: { message: 'Enrichment stop requested.' },
+            }));
           }
           break;
         }
@@ -232,6 +263,9 @@ wss.on('connection', (ws: WebSocket) => {
     for (const [key, sock] of wsClients) {
       if (sock === ws) {
         wsClients.delete(key);
+        // Cleanup enrichment if client disconnects mid-enrich
+        const ac = enrichAbort.get(key);
+        if (ac) { ac.abort(); enrichAbort.delete(key); }
         console.log(`[WS] Client disconnected: ${key}`);
       }
     }

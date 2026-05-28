@@ -17,6 +17,8 @@ import {
   Save,
   Globe,
   Filter,
+  StopCircle,
+  Trash2,
 } from 'lucide-react';
 import type { Lead, WSMessage } from '@/lib/types';
 import { connectWebSocket, triggerBatchEnrich, triggerDeepBatchEnrich } from '@/lib/api';
@@ -332,6 +334,25 @@ export default function EnrichPage() {
   }, [allLeads, selectedIds]);
 
   // Enrich selected leads
+  // Stop enrichment
+  const handleStopEnrich = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'cancel_enrich', payload: {} }));
+    }
+    setEnrichStatus('idle');
+    setStatusMessage('');
+  }, []);
+
+  // Clear all leads from enrichment page
+  const handleClearLeads = useCallback(() => {
+    setAllLeads([]);
+    setSelectedIds(new Set());
+    setEnrichStatus('idle');
+    setStatusMessage('');
+    localStorage.removeItem('enrich-session-leads');
+    localStorage.removeItem('enrich-session-name');
+  }, []);
+
   const handleEnrichSelected = useCallback(async () => {
     const selectedLeads = allLeads.filter((l) => selectedIds.has(l.id));
     if (selectedLeads.length === 0) return;
@@ -404,6 +425,26 @@ export default function EnrichPage() {
                   className="w-56 pl-9 pr-3 py-2 bg-gray-50 border border-panel-border rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition-all"
                 />
               </div>
+
+              {/* STOP button — visible only during enrichment */}
+              {isEnriching && (
+                <button
+                  onClick={handleStopEnrich}
+                  className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 text-white text-sm font-semibold rounded-lg transition-colors"
+                >
+                  <StopCircle className="w-4 h-4" /> Stop
+                </button>
+              )}
+
+              {/* CLEAR button — visible only when idle and leads exist */}
+              {!isEnriching && allLeads.length > 0 && (
+                <button
+                  onClick={handleClearLeads}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" /> Clear
+                </button>
+              )}
 
               <button
                 onClick={handleDeepEnrichSelected}
