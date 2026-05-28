@@ -23,6 +23,8 @@ import {
 import type { Lead, WSMessage } from '@/lib/types';
 import { connectWebSocket, disconnectWS, triggerBatchEnrich, triggerDeepBatchEnrich } from '@/lib/api';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+
 /** Enrichment status for the current page */
 type EnrichPageStatus = 'idle' | 'enriching' | 'complete' | 'error';
 type LeadEnrichState = 'pending' | 'scanning_website' | 'scanning_directories' | 'complete' | 'failed';
@@ -315,7 +317,7 @@ export default function EnrichPage() {
     });
   }, [filteredLeads]);
 
-  // Manually save enriched leads from this list to enriched-businesses
+  // Manually save enriched leads from this list to enriched-businesses (localStorage + API)
   const saveToEnriched = useCallback(() => {
     const completed = allLeads.filter((l) => l.phone || l.email || l.website);
     if (completed.length === 0) {
@@ -329,11 +331,20 @@ export default function EnrichPage() {
       enrichedAt: new Date().toISOString(),
     };
     try {
+      // Save to localStorage (fallback)
       const existing = JSON.parse(localStorage.getItem('enriched-businesses') || '[]');
       const idx = existing.findIndex((g: any) => g.listName === listName);
       if (idx >= 0) existing[idx] = entry;
       else existing.push(entry);
       localStorage.setItem('enriched-businesses', JSON.stringify(existing));
+
+      // Also save to backend API so it persists in DB
+      fetch(`${API_BASE}/api/enriched-groups`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listName, leads: completed, enrichedAt: entry.enrichedAt }),
+      }).catch(() => {}); // silent fail — localStorage is enough
+
       alert(`Saved ${completed.length} leads to enriched businesses!`);
     } catch {}
   }, [allLeads, activeListName]);
