@@ -21,7 +21,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { Lead, WSMessage } from '@/lib/types';
-import { connectWebSocket, triggerBatchEnrich, triggerDeepBatchEnrich } from '@/lib/api';
+import { connectWebSocket, disconnectWS, triggerBatchEnrich, triggerDeepBatchEnrich } from '@/lib/api';
 
 /** Enrichment status for the current page */
 type EnrichPageStatus = 'idle' | 'enriching' | 'complete' | 'error';
@@ -208,7 +208,7 @@ export default function EnrichPage() {
     wsRef.current = ws;
 
     return () => {
-      ws.close();
+      disconnectWS();
       wsRef.current = null;
     };
   }, []);

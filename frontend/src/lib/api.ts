@@ -48,13 +48,23 @@ export type { Lead, WSMessage };
  *
  * The connection persists across searches. Call .close() to disconnect.
  */
-export function connectWebSocket(onMessage: (data: WSMessage) => void, onConnected?: (clientId: string) => void): WebSocket {
+let wsInstance: WebSocket | null = null;
+let wsOnMessage: ((data: WSMessage) => void) | null = null;
+let wsOnConnected: ((clientId: string) => void) | null = null;
+let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+function createWS() {
+  if (wsInstance) {
+    try { wsInstance.close(); } catch {}
+    wsInstance = null;
+  }
+
   const wsUrl = getWsUrl();
   const ws = new WebSocket(wsUrl);
+  wsInstance = ws;
 
   ws.onopen = () => {
     console.log('[WS] Connected to backend');
-    // Register with the server to get a clientId
     ws.send(JSON.stringify({ type: 'register', payload: {} }));
   };
 
@@ -63,11 +73,11 @@ export function connectWebSocket(onMessage: (data: WSMessage) => void, onConnect
       const data = JSON.parse(event.data) as WSMessage;
       if (data.type === 'connected' || data.type === 'registered') {
         const clientId = data.payload?.clientId;
-        if (clientId && onConnected) {
-          onConnected(clientId);
+        if (clientId && wsOnConnected) {
+          wsOnConnected(clientId);
         }
       }
-      onMessage(data);
+      if (wsOnMessage) wsOnMessage(data);
     } catch (error) {
       console.error('[WS] Parse error:', error);
     }
@@ -78,10 +88,40 @@ export function connectWebSocket(onMessage: (data: WSMessage) => void, onConnect
   };
 
   ws.onclose = () => {
-    console.log('[WS] Disconnected');
+    console.log('[WS] Disconnected — reconnecting in 3s...');
+    wsInstance = null;
+    if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = setTimeout(() => {
+      console.log('[WS] Reconnecting...');
+      createWS();
+    }, 3000);
   };
+}
 
-  return ws;
+export function connectWebSocket(onMessage: (data: WSMessage) => void, onConnected?: (clientId: string) => void): WebSocket {
+  wsOnMessage = onMessage;
+  wsOnConnected = onConnected || null;
+
+  // If no instance or disconnected, create one
+  if (!wsInstance || wsInstance.readyState === WebSocket.CLOSED || wsInstance.readyState === WebSocket.CLOSING) {
+    createWS();
+  }
+
+  // Return the current instance (caller tracks ref)
+  return wsInstance!;
+}
+
+export function disconnectWS() {
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+  if (wsInstance) {
+    try { wsInstance.close(); } catch {}
+    wsInstance = null;
+  }
+  wsOnMessage = null;
+  wsOnConnected = null;
 }
 
 /**
