@@ -172,6 +172,20 @@ export default function EnrichPage() {
             break;
           }
 
+          case 'enrich_cancelled': {
+            setEnrichStatus('idle');
+            setStatusMessage(data.payload?.message || 'Stopped');
+            // Reset all scanning leads to failed so spinners disappear
+            setAllLeads((prev) =>
+              prev.map((l) =>
+                l.enrichmentStatus === 'scanning_website' || l.enrichmentStatus === 'scanning_directories'
+                  ? { ...l, enrichmentStatus: 'failed' as const, enrichmentError: 'cancelled' }
+                  : l
+              )
+            );
+            break;
+          }
+
           case 'error': {
             setEnrichStatus('error');
             setStatusMessage(`Error: ${data.payload.error}`);
@@ -334,13 +348,21 @@ export default function EnrichPage() {
   }, [allLeads, selectedIds]);
 
   // Enrich selected leads
-  // Stop enrichment
+  // Stop enrichment — also resets stuck scanning leads so spinners disappear
   const handleStopEnrich = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'cancel_enrich', payload: {} }));
     }
     setEnrichStatus('idle');
     setStatusMessage('');
+    // Reset any leads stuck in scanning to failed so spinners don't persist
+    setAllLeads((prev) =>
+      prev.map((l) =>
+        l.enrichmentStatus === 'scanning_website' || l.enrichmentStatus === 'scanning_directories'
+          ? { ...l, enrichmentStatus: 'failed' as const, enrichmentError: 'stopped' }
+          : l
+      )
+    );
   }, []);
 
   // Clear all leads from enrichment page

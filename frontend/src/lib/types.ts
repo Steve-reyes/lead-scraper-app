@@ -105,7 +105,14 @@ export interface WSRegistered {
   };
 }
 
-export type WSMessage = WSLeadFound | WSLeadEnriched | WSProgress | WSComplete | WSEnrichComplete | WSError | WSConnected | WSRegistered;
+export interface WSCancelled {
+  type: 'enrich_cancelled';
+  payload: {
+    message?: string;
+  };
+}
+
+export type WSMessage = WSLeadFound | WSLeadEnriched | WSProgress | WSComplete | WSEnrichComplete | WSError | WSConnected | WSRegistered | WSCancelled;
 
 export interface Metrics {
   totalFound: number;
