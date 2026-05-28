@@ -542,6 +542,36 @@ export default function LeadScorePage() {
             </div>
           )}
         </div>
+
+        {/* ── Scoring Guide ── */}
+        <div className="mt-8 p-5 bg-gradient-to-br from-purple-50/60 to-accent-50/40 border border-purple-100/60 rounded-xl">
+          <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-3">
+            <BarChart3 className="w-4 h-4 text-purple-500" /> About Lead Scoring
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-gray-500 leading-relaxed">
+            <div className="space-y-2">
+              <p className="font-medium text-gray-600">Score Tiers</p>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-red-500 shrink-0"></span><span><strong className="text-gray-700">Hot</strong> (8–10) — Contact within 24h</span></div>
+                <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-yellow-500 shrink-0"></span><span><strong className="text-gray-700">Warm</strong> (5–7) — Add to sequence this week</span></div>
+                <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500 shrink-0"></span><span><strong className="text-gray-700">Cold</strong> (1–4) — Bulk email, low priority</span></div>
+              </div>
+              <p className="pt-1">Each lead scores <strong className="text-gray-600">3–10</strong>. Calculated from 5 factors below.</p>
+            </div>
+            <div className="space-y-2">
+              <p className="font-medium text-gray-600">5 Factors (Additive Model)</p>
+              <ul className="space-y-1 list-disc list-inside">
+                <li><strong className="text-gray-600">Website Quality</strong> — Older/poorer sites = higher score (more SEO need)</li>
+                <li><strong className="text-gray-600">Review Count</strong> — Under 10 or 50+ = opportunity</li>
+                <li><strong className="text-gray-600">Google Maps Rank</strong> — Low rank = higher SEO potential</li>
+                <li><strong className="text-gray-600">Social Media</strong> — No social or incomplete = needs help</li>
+                <li><strong className="text-gray-600">Responsiveness</strong> — No phone/email listed = easier to reach them first</li>
+              </ul>
+              <p className="pt-1">Scores auto-calculate from enrichment data. The <strong className="text-gray-600">Analyze Scorer</strong> button runs them in bulk. Click <strong className="text-gray-600">Edit</strong> to override any score manually.</p>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   );
