@@ -11,8 +11,23 @@ services:
       - PORT=4000
       - WS_PORT=4001
       - NODE_ENV=production
-      - CHROME_CDP_URL=ws://127.0.0.1:3012
+      - CHROME_CDP_URL=ws://127.0.0.1:3005
       - FLARESOLVER_URL=http://127.0.0.1:8191/v1
+    depends_on:
+      - browserless
+    restart: unless-stopped
+
+  browserless:
+    image: browserless/chrome:latest
+    container_name: lead-scraper-browserless
+    network_mode: "host"
+    environment:
+      - PORT=3005
+      - CONNECTION_TIMEOUT=120000
+      - MAX_CONCURRENT_SESSIONS=5
+      - PREBOOT_CHROME=true
+      - WORKSPACE_DIR=/tmp/browserless-workspace
+      - ENABLE_DEBUGGER=false
     restart: unless-stopped
 
   flaresolverr:

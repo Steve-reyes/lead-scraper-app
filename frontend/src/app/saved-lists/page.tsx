@@ -34,17 +34,56 @@ export default function SavedListsPage() {
   const [loadedLeads, setLoadedLeads] = useState<Lead[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Load saved lists from localStorage on mount
+  // Load saved lists from API + localStorage on mount
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('saved-lists');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setSavedLists(parsed);
+    async function load() {
+      try {
+        // Fetch from API
+        const res = await fetch('/api/saved-lists');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.lists && data.lists.length > 0) {
+            const apiLists: Record<string, SavedList> = {};
+            for (const list of data.lists) {
+              apiLists[list.name] = {
+                name: list.name,
+                leads: list.leads,
+                createdAt: list.createdAt,
+                leadCount: list.leadCount,
+              };
+            }
+            // Merge with localStorage — API takes precedence
+            const merged = { ...apiLists };
+            try {
+              const stored = localStorage.getItem('saved-lists');
+              if (stored) {
+                const localParsed = JSON.parse(stored);
+                // Only add local lists not in API
+                for (const [k, v] of Object.entries(localParsed)) {
+                  if (!merged[k]) merged[k] = v as SavedList;
+                }
+              }
+            } catch {}
+            setSavedLists(merged);
+            return;
+          }
+        }
+      } catch {
+        console.warn('[SavedLists] API unavailable, falling back to localStorage');
       }
-    } catch {
-      console.warn('[SavedLists] Could not save saved lists from localStorage');
+
+      // Fallback: load from localStorage only
+      try {
+        const stored = localStorage.getItem('saved-lists');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setSavedLists(parsed);
+        }
+      } catch {
+        console.warn('[SavedLists] Could not load from localStorage');
+      }
     }
+    load();
   }, []);
 
   const lists = useMemo(() => Object.values(savedLists), [savedLists]);

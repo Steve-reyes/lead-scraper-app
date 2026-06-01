@@ -100,8 +100,33 @@ async function extractListingRefs(page: Page): Promise<ListingRef[]> {
       const ct = card.textContent || '';
       const rm = ct.match(/\((\d+[\d,]*)\)/);
       if (rm) reviewCount = parseInt(rm[1].replace(/,/g, ''));
-      const addrEl = card.querySelector('.W4Efsd');
-      const address = addrEl?.textContent?.trim() || '';
+      // Extract address: Google Maps has multiple .W4Efsd divs per card
+      // The first .W4Efsd contains only ratings, others have category + address + hours
+      const allAddrEls = card.querySelectorAll('.W4Efsd');
+      let address = '';
+      for (let i = 1; i < allAddrEls.length; i++) {
+        const el = allAddrEls[i];
+        // Skip the wrapper that contains only nested .W4Efsd children
+        const directChildren = Array.from(el.children).filter(c => !c.matches('.W4Efsd'));
+        if (directChildren.length === 0) continue;
+        // Look through all nested spans for something that looks like a street address
+        const allSpans = Array.from(el.querySelectorAll('span'));
+        for (const span of allSpans) {
+          const t = span.textContent?.trim() || '';
+          // Must contain a number, not be just a single number/rating, and be a reasonable address length
+          if (/\d/.test(t) && t.length > 5 && t.length < 100 &&
+              !/^\d+[.,]?\d*$/.test(t) &&
+              !/(reservas|llamar|pedir|book|call|order|quote)/i.test(t) &&
+              !/^(cerrado|abierto|closed|open|abre)/i.test(t)) {
+            const potential = t.replace(/\s+/g, ' ').trim();
+            if (/[A-Za-z]/.test(potential) && /\d/.test(potential)) {
+              address = potential.replace(/^[·•\-\s]+/, '').trim();
+              break;
+            }
+          }
+        }
+        if (address) break;
+      }
       if (href && !href.startsWith('http')) href = 'https://www.google.com' + href;
       items.push({ name, address, rating, reviewCount, placeId, placeUrl: href, website: null });
     });
