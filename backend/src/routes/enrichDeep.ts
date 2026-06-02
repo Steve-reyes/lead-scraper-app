@@ -10,11 +10,53 @@
 
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { Lead } from '../types';
+import { load } from 'cheerio';
+import { Lead, ScrapedContact } from '../types';
 import { findInDirectoriesDeep } from '../services/directoryFlare';
-import { detectCountry } from '../utils/validators';
+import { detectCountry, extractEmails, extractPhones } from '../utils/validators';
 import { sendToClient } from '../index';
 import { saveLead } from '../store';
+
+/**
+ * Quick website scrape — tries direct fetch first, falls back to FlareSolverr.
+ * Only scrapes the home page (fast ~2-3s via direct, ~5-10s via Flare).
+ * Returns emails + phones found on the page.
+ */
+async function scrapeBusinessWebsite(websiteUrl: string): Promise<ScrapedContact> {
+  const url = websiteUrl.startsWith('http') ? websiteUrl : `https://${websiteUrl}`;
+  const contact = { emails: [] as string[], phones: [] as string[], socials: {} as any };
+
+  // Try direct fetch first (fast)
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (resp.ok) {
+      const text = await resp.text();
+      contact.emails = extractEmails(text);
+      const $ = load(text);
+      contact.phones = extractPhones($('body').text());
+      if (contact.emails.length > 0 || contact.phones.length > 0) return contact;
+    }
+  } catch { /* fall through to FlareSolverr */ }
+
+  // Fallback: FlareSolverr
+  try {
+    const resp = await fetch('http://127.0.0.1:8191/v1', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cmd: 'request.get', url, maxTimeout: 15000 }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const data = await resp.json() as any;
+    if (data.status === 'ok') {
+      const html = data.solution?.response || '';
+      contact.emails = extractEmails(html);
+      const $ = load(html);
+      contact.phones = extractPhones($('body').text());
+    }
+  } catch { /* ignore */ }
+
+  return contact;
+}
 
 const router = Router();
 
@@ -66,6 +108,18 @@ router.post('/deep', async (req: Request, res: Response) => {
           });
         });
 
+        const websiteUrl = dirResult?.website || lead.website;
+
+        // If we found a website, scrape it for emails/phones (parallel)
+        let scraped: ScrapedContact | null = null;
+        if (websiteUrl) {
+          sendMessage({
+            type: 'progress',
+            payload: { message: `[${i + 1}/${leads.length}] ${lead.businessName}: scraping website...` },
+          });
+          scraped = await scrapeBusinessWebsite(websiteUrl);
+        }
+
         const enriched: Lead = {
           ...lead,
           sources: [...(lead.sources || [])],
@@ -80,6 +134,15 @@ router.post('/deep', async (req: Request, res: Response) => {
 
           const alreadyHasSource = enriched.sources.some((s) => s.type === dirResult.source.type);
           if (!alreadyHasSource) enriched.sources.push(dirResult.source);
+        }
+
+        // Merge website scrape results (emails/phones take priority)
+        if (scraped) {
+          if (scraped.emails.length > 0 && !enriched.email) enriched.email = scraped.emails[0];
+          if (scraped.phones.length > 0 && !enriched.phone) enriched.phone = scraped.phones[0];
+          if (scraped.emails.length > 0 || scraped.phones.length > 0) {
+            enriched.sources.push({ type: 'website_scrape', name: websiteUrl, url: websiteUrl });
+          }
         }
 
         enrichedLeads.push(enriched);
