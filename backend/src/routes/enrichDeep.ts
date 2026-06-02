@@ -59,7 +59,12 @@ router.post('/deep', async (req: Request, res: Response) => {
       const country = lead.country || detectCountry(lead.address || '');
 
       try {
-        const dirResult = await findInDirectoriesDeep(lead.businessName, city, country);
+        const dirResult = await findInDirectoriesDeep(lead.businessName, city, country, (progressMsg) => {
+          sendMessage({
+            type: 'progress',
+            payload: { message: `[${i + 1}/${leads.length}] ${lead.businessName}: ${progressMsg}` },
+          });
+        });
 
         const enriched: Lead = {
           ...lead,

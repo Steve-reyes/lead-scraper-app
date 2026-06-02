@@ -544,44 +544,63 @@ export async function scrapeWebsiteThroughFlare(websiteUrl: string): Promise<Scr
 export async function findInDirectoriesDeep(
   businessName: string,
   city: string,
-  country: string
+  country: string,
+  onProgress?: (msg: string) => void
 ): Promise<DirectoryResult | null> {
   const countryLower = country.toLowerCase();
-  const searches: (() => Promise<DirectoryResult | null>)[] = [];
 
-  // Global directories (always query)
-  searches.push(() => searchCylex(businessName, city));
-  searches.push(() => searchHotfrog(businessName, city));
-  searches.push(() => searchChamberOfCommerce(businessName, city));
-  searches.push(() => searchBuzzfile(businessName, city));
-  searches.push(() => searchGoogle(businessName, city));
-  searches.push(() => searchLinkedInViaGoogle(businessName, city));
-  searches.push(() => searchBingMaps(businessName, city));
+  // Named search tasks so we can report per-source progress
+  interface SearchTask {
+    name: string;
+    fn: () => Promise<DirectoryResult | null>;
+  }
+  const tasks: SearchTask[] = [
+    { name: 'Cylex', fn: () => searchCylex(businessName, city) },
+    { name: 'Hotfrog', fn: () => searchHotfrog(businessName, city) },
+    { name: 'ChamberOfCommerce', fn: () => searchChamberOfCommerce(businessName, city) },
+    { name: 'Buzzfile', fn: () => searchBuzzfile(businessName, city) },
+    { name: 'Google Search', fn: () => searchGoogle(businessName, city) },
+    { name: 'LinkedIn', fn: () => searchLinkedInViaGoogle(businessName, city) },
+    { name: 'Bing Maps', fn: () => searchBingMaps(businessName, city) },
+  ];
 
   // Canada-specific
   if (countryLower.includes('canada') || countryLower.includes('canadá') || countryLower === 'ca') {
-    searches.push(() => searchCanada411(businessName, city));
-    searches.push(() => searchYellowPagesCA(businessName, city));
+    tasks.push({ name: 'Canada411', fn: () => searchCanada411(businessName, city) });
+    tasks.push({ name: 'YellowPages.ca', fn: () => searchYellowPagesCA(businessName, city) });
   }
 
   // Australia-specific
   if (countryLower.includes('australia') || countryLower === 'au') {
-    searches.push(() => searchYellowPagesAU(businessName, city));
-    searches.push(() => searchTrueLocal(businessName, city));
+    tasks.push({ name: 'YellowPages.com.au', fn: () => searchYellowPagesAU(businessName, city) });
+    tasks.push({ name: 'TrueLocal', fn: () => searchTrueLocal(businessName, city) });
   }
 
   // UK-specific
   if (countryLower.includes('uk') || countryLower.includes('united kingdom') || countryLower.includes('england')) {
-    searches.push(() => searchYell(businessName, city));
+    tasks.push({ name: 'Yell', fn: () => searchYell(businessName, city) });
   }
 
   // Spain-specific
   if (countryLower.includes('spain') || countryLower.includes('españa') || countryLower === 'es') {
-    searches.push(() => searchPaginasAmarillas(businessName, city));
+    tasks.push({ name: 'Páginas Amarillas', fn: () => searchPaginasAmarillas(businessName, city) });
   }
 
-  console.log(`[DeepDir] Running ${searches.length} searches for "${businessName}" in ${city} (${country})`);
-  const results = await Promise.allSettled(searches.map((s) => s()));
+  console.log(`[DeepDir] Running ${tasks.length} searches for "${businessName}" in ${city} (${country})`);
+
+  const results = await Promise.allSettled(
+    tasks.map((task) =>
+      task.fn()
+        .then((result) => {
+          if (onProgress) onProgress(`${task.name}: ${result ? '✓ found data' : '✗ no result'}`);
+          return result;
+        })
+        .catch(() => {
+          if (onProgress) onProgress(`${task.name}: ✗ error`);
+          return null as DirectoryResult | null;
+        })
+    )
+  );
 
   const valid: DirectoryResult[] = [];
   for (const result of results) {
