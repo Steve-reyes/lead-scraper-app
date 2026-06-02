@@ -22,7 +22,7 @@ const router = Router();
 // ── POST /api/search — trigger a new streaming search (Google Maps only) ──
 router.post('/search', async (req: Request, res: Response) => {
   try {
-    const { keyword, location, country, radius, maxResults, clientId } = req.body;
+    const { keyword, location, country, radius, maxResults, clientId, freshSession } = req.body;
 
     if (!keyword || !location) {
       return res.status(400).json({
@@ -37,6 +37,7 @@ router.post('/search', async (req: Request, res: Response) => {
       country: (country || 'United States').trim(),
       radiusKm: Math.min(Math.max(parseInt(radius) || 0, 0), 50),
       maxResults: Math.min(parseInt(maxResults) || 500, 2000),
+      freshSession: freshSession === true || freshSession === 'true',
     };
 
     const searchId = uuidv4().slice(0, 12);

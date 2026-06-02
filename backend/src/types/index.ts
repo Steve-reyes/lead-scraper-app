@@ -46,6 +46,7 @@ export interface SearchRequest {
   country: string;
   radiusKm?: number;
   maxResults?: number;
+  freshSession?: boolean;
 }
 
 export interface SearchProgress {

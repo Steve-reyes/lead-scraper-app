@@ -105,8 +105,8 @@ export async function enrichLead(
       : `Google search failed: ${error?.message || 'Unknown'}`;
   }
 
-  // Human-like 2-4s pause before moving to website scrape
-  await randomDelay(2000, 4000);
+  // Brief pause before website scrape
+  await randomDelay(400, 800);
 
   if (websiteToScrape) {
     try {
@@ -117,7 +117,7 @@ export async function enrichLead(
       // Step 1b: If fetch scraper found nothing, use Chrome CDP for JS-rendered sites
       if (!hasData) {
         console.log(`[Enrich] Fetch scraper found nothing, trying Chrome CDP for ${websiteToScrape}`);
-        await randomDelay(1000, 3000);
+        await randomDelay(200, 500);
         const browserScraped = await scrapeWebsiteWithBrowser(websiteToScrape);
         scraped.emails.push(...browserScraped.emails);
         scraped.phones.push(...browserScraped.phones);
@@ -159,8 +159,8 @@ export async function enrichLead(
     }
   }
 
-  // Human-like 3-5s pause before directory lookup
-  await randomDelay(3000, 5000);
+  // Brief pause before directory lookup
+  await randomDelay(500, 1000);
 
   // ── Step 2: Always query directories ──
   enriched.enrichmentStatus = 'scanning_directories';
@@ -293,7 +293,7 @@ export async function enrichLeadBatch(
     });
 
     if (i + concurrency < leads.length) {
-      await randomDelay(3000, 6000);
+      await randomDelay(500, 1000);
     }
   }
 
@@ -308,8 +308,8 @@ export async function enrichLeadBatch(
 
     console.log(`[Enrich] Pass 2 — retrying ${cloudflareLeads.length} cloudflare-blocked leads through FlareSolverr`);
 
-    // 5-10s delay before starting pass 2 (real person pauses between attempts)
-    await randomDelay(5000, 10000);
+    // Brief delay before starting pass 2
+    await randomDelay(1000, 2000);
 
     for (let i = 0; i < cloudflareLeads.length; i += concurrency) {
       // Check cancel
@@ -337,7 +337,7 @@ export async function enrichLeadBatch(
       });
 
       if (i + concurrency < cloudflareLeads.length) {
-        await randomDelay(3000, 6000);
+        await randomDelay(500, 1000);
       }
     }
   }

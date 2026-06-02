@@ -266,9 +266,6 @@ wss.on('connection', (ws: WebSocket) => {
     for (const [key, sock] of wsClients) {
       if (sock === ws) {
         wsClients.delete(key);
-        // Cleanup enrichment if client disconnects mid-enrich
-        const ac = enrichAbort.get(key);
-        if (ac) { ac.abort(); enrichAbort.delete(key); }
         console.log(`[WS] Client disconnected: ${key}`);
       }
     }

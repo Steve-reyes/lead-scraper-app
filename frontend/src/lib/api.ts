@@ -65,7 +65,10 @@ function createWS() {
 
   ws.onopen = () => {
     console.log('[WS] Connected to backend');
-    ws.send(JSON.stringify({ type: 'register', payload: {} }));
+    // Re-register with persisted clientId so refresh/tab-switch picks up same stream
+    const savedClientId = typeof window !== 'undefined' ? localStorage.getItem('enrich-client-id') : null;
+    const payload = savedClientId ? { clientId: savedClientId } : {};
+    ws.send(JSON.stringify({ type: 'register', payload }));
   };
 
   ws.onmessage = (event) => {
@@ -73,8 +76,12 @@ function createWS() {
       const data = JSON.parse(event.data) as WSMessage;
       if (data.type === 'connected' || data.type === 'registered') {
         const clientId = data.payload?.clientId;
-        if (clientId && wsOnConnected) {
-          wsOnConnected(clientId);
+        if (clientId) {
+          // Persist clientId so we can re-attach after refresh
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('enrich-client-id', clientId);
+          }
+          if (wsOnConnected) wsOnConnected(clientId);
         }
       }
       if (wsOnMessage) wsOnMessage(data);

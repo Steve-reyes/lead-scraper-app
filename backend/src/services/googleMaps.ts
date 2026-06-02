@@ -14,7 +14,7 @@ import { getRandomUserAgent } from '../utils/userAgents';
 
 const CHROME_CDP = process.env.CHROME_CDP_URL || 'ws://127.0.0.1:3012';
 
-function delay(min = 2000, max = 5000): Promise<void> {
+function delay(min = 500, max = 1500): Promise<void> {
   const ms = Math.floor(Math.random() * (max - min + 1)) + min;
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -45,10 +45,10 @@ async function scrollResultsPanel(page: Page, count: number = 1): Promise<void> 
               c.scrollTop += c.scrollHeight * 0.8;
             }
           }, sel);
-          await delay(300, 700);
+          await delay(100, 300);
         } catch { break; }
       }
-      await delay(500, 1000);
+      await delay(200, 500);
       // Final scroll to bottom
       try {
         await page.evaluate((s: string) => {
@@ -143,8 +143,8 @@ async function extractWebsiteFromPlace(browser: Browser, placeUrl: string): Prom
   try {
     tab = await browser.newPage();
     await tab.setUserAgent(getRandomUserAgent());
-    await tab.goto(placeUrl, { waitUntil: 'networkidle2', timeout: 20000 });
-    await new Promise((r) => setTimeout(r, 2000));
+    await tab.goto(placeUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await new Promise((r) => setTimeout(r, 1000));
 
     const website = await tab.evaluate(() => {
       // Look for a link labeled as website
@@ -175,13 +175,14 @@ async function extractWebsiteFromPlace(browser: Browser, placeUrl: string): Prom
  * Search Google Maps — collect listings, extract websites in parallel via new tabs.
  */
 export async function searchGoogleMaps(request: SearchRequest): Promise<Lead[]> {
-  const { keyword, location, radiusKm, country } = request;
+  const { keyword, location, radiusKm, country, freshSession } = request;
   const maxResults = (request.maxResults && request.maxResults > 0) ? request.maxResults : 150;
   console.log(`[GMaps] Searching for "${keyword}" in "${location}"...`);
 
   const seenNames = new Set<string>();
   let browser: Browser | null = null;
   let page: Page | null = null;
+  let contextCleanup: (() => Promise<void>) | null = null;
 
   try {
     // Discover CDP endpoint
@@ -200,7 +201,23 @@ export async function searchGoogleMaps(request: SearchRequest): Promise<Lead[]> 
     }
 
     browser = await puppeteer.connect({ browserWSEndpoint, defaultViewport: { width: 1280, height: 800 } });
-    page = await browser.newPage();
+
+    // Fresh session: use incognito browser context for isolated cookies/storage
+    // Each fresh session gets its own sandbox — Google can't link searches together
+    if (freshSession) {
+      console.log('[GMaps] Fresh session requested — creating incognito context...');
+      try {
+        const context = await browser.createBrowserContext();
+        page = await context.newPage();
+        contextCleanup = () => context.close().catch(() => {});
+      } catch (e) {
+        console.log('[GMaps] Incognito context failed, using default page:', (e as Error).message);
+        page = await browser.newPage();
+      }
+    } else {
+      page = await browser.newPage();
+    }
+    if (!page) { throw new Error('Failed to create page'); }
     await page.setUserAgent(getRandomUserAgent());
 
     const searchTerm = radiusKm && radiusKm > 0 ? `${keyword} within ${radiusKm}km of ${location}` : `${keyword} ${location}`;
@@ -208,7 +225,7 @@ export async function searchGoogleMaps(request: SearchRequest): Promise<Lead[]> 
 
     console.log(`[GMaps] Loading search page...`);
     await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-    await delay(3000, 5000);
+    await delay(1000, 2000);
 
     // Cookie consent — multiple languages
     try {
@@ -226,7 +243,7 @@ export async function searchGoogleMaps(request: SearchRequest): Promise<Lead[]> 
       });
       if (handled) {
         console.log('[GMaps] Consent handled');
-        await delay(2000, 3000);
+        await delay(500, 1000);
         // Wait for redirect back to maps from consent page
         try {
           await page.waitForFunction(() => !window.location.href.includes('consent.google'), { timeout: 15000 });
@@ -246,7 +263,7 @@ export async function searchGoogleMaps(request: SearchRequest): Promise<Lead[]> 
     // Phase 1: Scroll + collect — aggressive scrolling
     const collectedRefs: ListingRef[] = [];
     let emptyScrolls = 0;
-    const MAX_EMPTY = 5;  // More tolerance for empty scrolls before giving up
+    const MAX_EMPTY = 3;  // Stop after 3 empty scrolls
     let scrollPasses = 1;
 
     while (collectedRefs.length < maxResults && emptyScrolls < MAX_EMPTY) {
@@ -274,7 +291,7 @@ export async function searchGoogleMaps(request: SearchRequest): Promise<Lead[]> 
     console.log(`[GMaps] Collected ${collectedRefs.length} listings. Extracting websites...`);
 
     // Phase 2: Extract websites in parallel (3 tabs at a time)
-    const CONCURRENT = 3;
+    const CONCURRENT = 5;
     for (let i = 0; i < collectedRefs.length; i += CONCURRENT) {
       const batch = collectedRefs.slice(i, i + CONCURRENT);
       const results = await Promise.allSettled(
@@ -311,7 +328,7 @@ export async function searchGoogleMaps(request: SearchRequest): Promise<Lead[]> 
       updatedAt: new Date().toISOString(),
     }));
 
-    await page.close().catch(() => {});
+    if (page) { await page.close().catch(() => {}); }
     console.log(`[GMaps] Done. ${leads.length} results (${leads.filter(l => l.website).length} with websites).`);
     return leads;
 
@@ -320,5 +337,6 @@ export async function searchGoogleMaps(request: SearchRequest): Promise<Lead[]> 
     return [];
   } finally {
     if (page) { try { await page.close(); } catch {} }
+    if (contextCleanup) { await contextCleanup(); }
   }
 }
