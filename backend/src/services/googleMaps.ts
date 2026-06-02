@@ -143,11 +143,13 @@ async function extractWebsiteFromPlace(browser: Browser, placeUrl: string): Prom
   try {
     tab = await browser.newPage();
     await tab.setUserAgent(getRandomUserAgent());
-    await tab.goto(placeUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
-    await new Promise((r) => setTimeout(r, 1000));
+    await tab.goto(placeUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
+    // Wait for the detail panel to render — website button typically has aria-label
+    try { await tab.waitForSelector('[aria-label*="site" i], [data-tooltip*="site" i], a[href]:not([href*="google"])', { timeout: 8000 }); } catch {}
+    await new Promise((r) => setTimeout(r, 1500));
 
     const website = await tab.evaluate(() => {
-      // Look for a link labeled as website
+      // Look for a link labeled as website (Google Maps uses aria-label="Website")
       const allLinks = Array.from(document.querySelectorAll('a[href]'));
       let fallback: string | null = null;
       for (const link of allLinks) {
@@ -155,9 +157,12 @@ async function extractWebsiteFromPlace(browser: Browser, placeUrl: string): Prom
         const href = a.href.trim();
         if (href && href.startsWith('http') && !href.match(/google\./) && !href.includes('gstatic') && !href.includes('googleapis')) {
           const text = a.textContent?.toLowerCase() || '';
+          const aria = a.getAttribute('aria-label')?.toLowerCase() || '';
           const tooltip = a.getAttribute('data-tooltip')?.toLowerCase() || '';
-          if (text.includes('website') || tooltip.includes('website')) return href;
-          if (!fallback && !href.includes('maps')) fallback = href;
+          const title = a.getAttribute('title')?.toLowerCase() || '';
+          if (text.includes('website') || aria.includes('website') || tooltip.includes('website') || title.includes('website')) return href;
+          // Fallback: first external link that looks like a real website
+          if (!fallback && !href.includes('maps') && !href.includes('maps') && !href.includes('directions') && !/google/i.test(href)) fallback = href;
         }
       }
       return fallback;
