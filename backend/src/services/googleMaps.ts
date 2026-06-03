@@ -144,28 +144,84 @@ async function extractWebsiteFromPlace(browser: Browser, placeUrl: string): Prom
     tab = await browser.newPage();
     await tab.setUserAgent(getRandomUserAgent());
     await tab.goto(placeUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
-    // Wait for the detail panel to render — website button typically has aria-label
-    try { await tab.waitForSelector('[aria-label*="site" i], [data-tooltip*="site" i], a[href]:not([href*="google"])', { timeout: 8000 }); } catch {}
-    await new Promise((r) => setTimeout(r, 1500));
+
+    // Handle Google consent/GDPR page (redirects from maps to consent.google.com)
+    if (tab.url().includes('consent.google')) {
+      console.log('[GMaps] Consent page detected on place page, accepting...');
+      try {
+        const accepted = await tab.evaluate(() => {
+          // Google consent page uses <input type="submit"> forms, not <button> elements
+          const inputs = Array.from(document.querySelectorAll('input[type="submit"]'));
+          for (const el of inputs) {
+            const v = (el.getAttribute('value') || '').toLowerCase();
+            const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+            if (v.includes('accept all') || aria.includes('accept all') || v.includes('aceptar todo') || aria.includes('aceptar todo') ||
+                v.includes('accepter tout') || v.includes('alle akzeptieren') || v.includes('accept everything')) {
+              (el as HTMLInputElement).click(); return true;
+            }
+          }
+          // Fallback: also check <button> elements
+          for (const btn of Array.from(document.querySelectorAll('button, div[role="button"]'))) {
+            const t = (btn.textContent || '').toLowerCase();
+            if (t.includes('accept all') || t.includes('aceptar todo') || t.includes('accepter tout') || t.includes('alle akzeptieren')) {
+              (btn as HTMLButtonElement).click(); return true;
+            }
+          }
+          return false;
+        });
+        if (accepted) {
+          try { await tab.waitForFunction(() => !window.location.href.includes('consent.google'), { timeout: 15000 }); } catch {}
+        }
+      } catch {}
+    }
+
+    // Wait for the detail panel to render (maps needs time to load JS content)
+    await new Promise((r) => setTimeout(r, 4000));
 
     const website = await tab.evaluate(() => {
-      // Look for a link labeled as website (Google Maps uses aria-label="Website")
+      // Helper: extract real URL from Google redirect (/url?q=https://...)
+      const resolveUrl = (href: string): string => {
+        if (href.startsWith('/url?q=')) {
+          try { return decodeURIComponent(href.split('?q=')[1]?.split('&')[0] || href); } catch { return href; }
+        }
+        return href;
+      };
+
       const allLinks = Array.from(document.querySelectorAll('a[href]'));
-      let fallback: string | null = null;
+      let best: { url: string; score: number } | null = null;
+
       for (const link of allLinks) {
         const a = link as HTMLAnchorElement;
-        const href = a.href.trim();
-        if (href && href.startsWith('http') && !href.match(/google\./) && !href.includes('gstatic') && !href.includes('googleapis')) {
-          const text = a.textContent?.toLowerCase() || '';
-          const aria = a.getAttribute('aria-label')?.toLowerCase() || '';
-          const tooltip = a.getAttribute('data-tooltip')?.toLowerCase() || '';
-          const title = a.getAttribute('title')?.toLowerCase() || '';
-          if (text.includes('website') || aria.includes('website') || tooltip.includes('website') || title.includes('website')) return href;
-          // Fallback: first external link that looks like a real website
-          if (!fallback && !href.includes('maps') && !href.includes('maps') && !href.includes('directions') && !/google/i.test(href)) fallback = href;
+        const rawHref = a.getAttribute('href') || '';
+        const href = resolveUrl(rawHref);
+
+        if (!href || !href.startsWith('http')) continue;
+        if (href.includes('google.') && !rawHref.startsWith('/url?q=')) continue;
+        if (href.includes('gstatic') || href.includes('googleapis')) continue;
+        if (href.includes('maps.google') || href.includes('/maps/')) continue;
+
+        const text = (a.textContent || '').toLowerCase();
+        const aria = (a.getAttribute('aria-label') || '').toLowerCase();
+        const tooltip = (a.getAttribute('data-tooltip') || '').toLowerCase();
+        const title = (a.getAttribute('title') || '').toLowerCase();
+
+        let score = 0;
+        // Exact match "website" or "web" in any label
+        if (text.includes('website') || aria.includes('website') || tooltip.includes('website') || title.includes('website')) score = 100;
+        else if (aria.includes('sitio web') || aria.includes('site web')) score = 100;  // Spanish/French
+        else if (aria.includes('website') || aria.includes('web')) score = 90;
+        else if (text.includes('sitio web') || text.includes('site web')) score = 90;
+        // Google redirect with query param = likely business website
+        else if (rawHref.startsWith('/url?q=')) score = 80;
+        // Plain external link (not Google)
+        else if (!href.includes('google.')) score = 50;
+
+        if (score > 0 && (!best || score > best.score)) {
+          best = { url: href, score };
         }
       }
-      return fallback;
+
+      return best?.url || null;
     });
 
     return website;
@@ -232,9 +288,20 @@ export async function searchGoogleMaps(request: SearchRequest): Promise<Lead[]> 
     await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
     await delay(1000, 2000);
 
-    // Cookie consent — multiple languages
+    // Cookie consent — multiple languages (handles both <button> and <input type="submit"> forms)
     try {
       const handled = await page.evaluate(() => {
+        // Check <input type="submit"> first (Google consent uses forms)
+        for (const el of Array.from(document.querySelectorAll('input[type="submit"]'))) {
+          const v = (el.getAttribute('value') || '').toLowerCase();
+          const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+          if (v.includes('accept all') || aria.includes('accept all') || v.includes('aceptar todo') || aria.includes('aceptar todo') ||
+              v.includes('reject all') || aria.includes('reject all') || v.includes('rechazar todo') || aria.includes('rechazar todo') ||
+              v.includes('accepteren') || v.includes('alle akzeptieren') || v.includes('accepter tout') || v.includes('tout accepter')) {
+            (el as HTMLInputElement).click(); return true;
+          }
+        }
+        // Fallback: <button> elements
         for (const btn of Array.from(document.querySelectorAll('button'))) {
           const t = btn.textContent?.toLowerCase() || '';
           if (t.includes('accept all') || t.includes('reject all') ||
@@ -295,8 +362,8 @@ export async function searchGoogleMaps(request: SearchRequest): Promise<Lead[]> 
 
     console.log(`[GMaps] Collected ${collectedRefs.length} listings. Extracting websites...`);
 
-    // Phase 2: Extract websites in parallel (3 tabs at a time)
-    const CONCURRENT = 5;
+    // Phase 2: Extract websites in parallel (3 tabs at a time to avoid overloading browserless)
+    const CONCURRENT = 3;
     for (let i = 0; i < collectedRefs.length; i += CONCURRENT) {
       const batch = collectedRefs.slice(i, i + CONCURRENT);
       const results = await Promise.allSettled(
