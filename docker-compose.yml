@@ -47,7 +47,6 @@ services:
     network_mode: "host"
     environment:
       - PORT=3000
-      - NEXT_PUBLIC_API_URL=http://localhost:4000
       - NEXT_TELEMETRY_DISABLED=1
     depends_on:
       - backend

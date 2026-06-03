@@ -141,7 +141,7 @@ router.post('/deep', async (req: Request, res: Response) => {
           if (scraped.emails.length > 0 && !enriched.email) enriched.email = scraped.emails[0];
           if (scraped.phones.length > 0 && !enriched.phone) enriched.phone = scraped.phones[0];
           if (scraped.emails.length > 0 || scraped.phones.length > 0) {
-            enriched.sources.push({ type: 'website_scrape', name: websiteUrl, url: websiteUrl });
+            enriched.sources.push({ type: 'website_scrape', name: websiteUrl || '', url: websiteUrl || '' });
           }
         }
 

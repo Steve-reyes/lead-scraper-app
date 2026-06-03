@@ -10,6 +10,7 @@
 import { Router, Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
+const archiver = require('archiver');
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const Database = require('better-sqlite3');
@@ -80,6 +81,77 @@ router.delete('/saved-lists/:name', (req: Request, res: Response) => {
   try {
     getDb().prepare('DELETE FROM saved_lists WHERE list_name = ?').run(req.params.name);
     res.json({ deleted: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── CSV helpers ──
+function escapeCsv(val: any): string {
+  if (val == null) return '';
+  const s = String(val);
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function leadsToCsv(leads: any[]): string {
+  const headers = ['businessName', 'phone', 'email', 'website', 'address', 'city', 'country', 'rating', 'sources'];
+  const rows = [headers.join(',')];
+  for (const lead of leads) {
+    const sources = (lead.sources || []).map((s: any) => s.name || s.type || '').join('; ');
+    rows.push([
+      escapeCsv(lead.businessName),
+      escapeCsv(lead.phone),
+      escapeCsv(lead.email),
+      escapeCsv(lead.website),
+      escapeCsv(lead.address),
+      escapeCsv(lead.city),
+      escapeCsv(lead.country),
+      escapeCsv(lead.rating),
+      escapeCsv(sources),
+    ].join(','));
+  }
+  return rows.join('\n');
+}
+
+// GET /api/saved-lists/:name/export/download — CSV for one list
+router.get('/saved-lists/:name/export/download', (req: Request, res: Response) => {
+  try {
+    const row = getDb().prepare('SELECT * FROM saved_lists WHERE list_name = ?').get(req.params.name) as any;
+    if (!row) return res.status(404).json({ error: 'List not found' });
+    const leads = JSON.parse(row.leads);
+    const csv = leadsToCsv(leads);
+    const filename = encodeURIComponent(row.list_name.replace(/[^a-zA-Z0-9 _-]/g, '')) + '.csv';
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/saved-lists/export-all — ZIP of all lists as CSVs
+router.get('/saved-lists/export-all', (_req: Request, res: Response) => {
+  try {
+    const rows = getDb().prepare('SELECT * FROM saved_lists ORDER BY list_name ASC').all() as any[];
+    if (!rows.length) return res.status(404).json({ error: 'No saved lists to export' });
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="all-saved-lists.zip"');
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.pipe(res);
+
+    for (const row of rows) {
+      const leads = JSON.parse(row.leads);
+      const csv = leadsToCsv(leads);
+      const filename = row.list_name.replace(/[^a-zA-Z0-9 _-]/g, '') + '.csv';
+      archive.append(csv, { name: filename });
+    }
+
+    archive.finalize();
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

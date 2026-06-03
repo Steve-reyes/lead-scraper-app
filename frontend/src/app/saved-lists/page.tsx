@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
-import { List, Search, Building2, ChevronDown, ChevronRight, ExternalLink, Calendar, Users, Sparkles } from 'lucide-react';
+import { List, Search, Building2, ChevronDown, ChevronRight, ExternalLink, Calendar, Users, Sparkles, Download, DownloadCloud } from 'lucide-react';
 import type { Lead } from '@/lib/types';
 
 interface SavedList {
@@ -135,6 +135,16 @@ export default function SavedListsPage() {
                 {lists.length} {lists.length === 1 ? 'list' : 'lists'} saved
               </p>
             </div>
+            {lists.length > 0 && (
+              <a
+                href="/api/saved-lists/export-all"
+                download
+                className="ml-auto flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white text-sm font-semibold rounded-lg transition-colors"
+              >
+                <DownloadCloud className="w-4 h-4" />
+                Export All CSV
+              </a>
+            )}
           </div>
         </div>
 
@@ -190,6 +200,15 @@ export default function SavedListsPage() {
                       <div className="flex items-center gap-2 shrink-0">
                         {expandedList !== list.name && (
                           <>
+                            <a
+                              href={`/api/saved-lists/${encodeURIComponent(list.name)}/export/download`}
+                              download
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700 px-3 py-1.5 rounded-md hover:bg-emerald-50 transition-colors"
+                            >
+                              <Download className="w-3 h-3" />
+                              CSV
+                            </a>
                             <span
                               onClick={(e) => {
                                 e.stopPropagation();
