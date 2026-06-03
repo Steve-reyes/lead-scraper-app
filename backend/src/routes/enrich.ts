@@ -80,7 +80,7 @@ router.post('/batch', async (req: Request, res: Response) => {
       });
     };
 
-    const enrichedLeads = await enrichLeadBatch(leads, onUpdate, 5);
+    const enrichedLeads = await enrichLeadBatch(leads, onUpdate, 2);
 
     sendMessage({
       type: 'enrich_complete',
