@@ -123,9 +123,10 @@ router.get('/saved-lists/:name/export/download', (req: Request, res: Response) =
     if (!row) return res.status(404).json({ error: 'List not found' });
     const leads = JSON.parse(row.leads);
     const csv = leadsToCsv(leads);
-    const filename = encodeURIComponent(row.list_name.replace(/[^a-zA-Z0-9 _-]/g, '')) + '.csv';
+    const safe = row.list_name.replace(/[^a-zA-Z0-9 _-]/g, '');
+    const filename = encodeURIComponent(safe) + '.csv';
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
     res.send(csv);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
