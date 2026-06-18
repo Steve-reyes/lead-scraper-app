@@ -6,7 +6,6 @@ import {
   Search,
   Sparkles,
   List,
-  Download,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -18,6 +17,7 @@ import {
   X,
   Menu,
   LogOut,
+  Users,
 } from 'lucide-react';
 
 interface NavItem {
@@ -25,6 +25,7 @@ interface NavItem {
   label: string;
   icon: React.ElementType;
   path: string;
+  permission: string;
 }
 
 interface SidebarProps {
@@ -33,10 +34,53 @@ interface SidebarProps {
   onMobileToggle?: () => void;
 }
 
+const ALL_NAV_ITEMS: NavItem[] = [
+  { id: 'scrape', label: 'Search & Scrape', icon: Search, path: '/', permission: 'scrape' },
+  { id: 'enrich', label: 'Enrich Leads', icon: Sparkles, path: '/enrich', permission: 'enrich' },
+  { id: 'enriched', label: 'Enriched Businesses', icon: CheckCircle2, path: '/enriched-businesses', permission: 'enriched' },
+  { id: 'lists', label: 'Saved Lists', icon: List, path: '/saved-lists', permission: 'lists' },
+  { id: 'kanban', label: 'Lead Pipeline', icon: Columns, path: '/lead-kanban', permission: 'kanban' },
+  { id: 'score', label: 'Lead Score', icon: Target, path: '/lead-score', permission: 'score' },
+  { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics', permission: 'analytics' },
+  { id: 'settings', label: 'Settings', icon: Settings, path: '/settings', permission: 'settings' },
+  { id: 'users', label: 'Manage Users', icon: Users, path: '/users', permission: 'users' },
+];
+
+const ALL_PERMISSIONS = ['scrape', 'enrich', 'enriched', 'lists', 'kanban', 'score', 'analytics', 'settings', 'users'];
+const ROLE_PRESETS: Record<string, string[]> = {
+  admin: ALL_PERMISSIONS,
+  manager: ALL_PERMISSIONS.filter(p => p !== 'users'),
+  viewer: ['scrape', 'lists', 'kanban'],
+  custom: [],
+};
+
+function getUserPermissions(): string[] {
+  try {
+    const stored = localStorage.getItem('leadscraper-user');
+    if (!stored) return ALL_PERMISSIONS; // fallback, show all
+    const user = JSON.parse(stored);
+    return user.permissions || ROLE_PRESETS[user.role] || [];
+  } catch {
+    return ALL_PERMISSIONS;
+  }
+}
+
 export default function Sidebar({ collapsed, onToggle, onMobileToggle }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [userPerms, setUserPerms] = useState<string[]>([]);
+
+  useEffect(() => {
+    setUserPerms(getUserPermissions());
+  }, []);
+
+  // Re-check perms when localStorage changes (e.g., after login)
+  useEffect(() => {
+    const handle = () => setUserPerms(getUserPermissions());
+    window.addEventListener('storage', handle);
+    return () => window.removeEventListener('storage', handle);
+  }, []);
 
   useEffect(() => {
     if (mobileOpen) {
@@ -44,21 +88,10 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
     } else {
       document.body.style.overflow = '';
     }
-    return () => {
-      document.body.style.overflow = '';
-    };
+    return () => { document.body.style.overflow = ''; };
   }, [mobileOpen]);
 
-  const navItems: NavItem[] = [
-    { id: 'scrape', label: 'Search & Scrape', icon: Search, path: '/' },
-    { id: 'enrich', label: 'Enrich Leads', icon: Sparkles, path: '/enrich' },
-    { id: 'enriched', label: 'Enriched Businesses', icon: CheckCircle2, path: '/enriched-businesses' },
-    { id: 'lists', label: 'Saved Lists', icon: List, path: '/saved-lists' },
-    { id: 'kanban', label: 'Lead Pipeline', icon: Columns, path: '/lead-kanban' },
-    { id: 'score', label: 'Lead Score', icon: Target, path: '/lead-score' },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
-    { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
-  ];
+  const navItems = ALL_NAV_ITEMS.filter(item => userPerms.includes(item.permission));
 
   const handleNav = (item: NavItem) => {
     if (item.path !== '#') {
@@ -80,9 +113,34 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
   };
 
   const handleSignOut = () => {
+    localStorage.removeItem('leadscraper-user');
     localStorage.removeItem('auth-token');
     window.location.href = '/login';
   };
+
+  const renderNav = (isMobile: boolean) => (
+    <nav className="flex-1 py-3 px-2 space-y-1">
+      {navItems.map((item) => (
+        <button
+          key={item.id}
+          onClick={() => handleNav(item)}
+          className={
+            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ' +
+            (isActive(item)
+              ? 'bg-sidebar-active text-accent-400'
+              : 'text-gray-400 hover:text-gray-200 hover:bg-sidebar-hover') +
+            (collapsed && !isMobile ? ' justify-center px-0' : '')
+          }
+          title={collapsed && !isMobile ? item.label : undefined}
+        >
+          <item.icon
+            className={'w-4 h-4 shrink-0' + (isActive(item) ? ' text-accent-400' : '')}
+          />
+          {(!collapsed || isMobile) && <span>{item.label}</span>}
+        </button>
+      ))}
+    </nav>
+  );
 
   const sidebarContent = (
     <>
@@ -107,28 +165,7 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
         )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 py-3 px-2 space-y-1">
-        {navItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => handleNav(item)}
-            className={
-              'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ' +
-              (isActive(item)
-                ? 'bg-sidebar-active text-accent-400'
-                : 'text-gray-400 hover:text-gray-200 hover:bg-sidebar-hover') +
-              (collapsed ? ' justify-center px-0' : '')
-            }
-            title={collapsed ? item.label : undefined}
-          >
-            <item.icon
-              className={'w-4 h-4 shrink-0' + (isActive(item) ? ' text-accent-400' : '')}
-            />
-            {!collapsed && <span>{item.label}</span>}
-          </button>
-        ))}
-      </nav>
+      {renderNav(false)}
 
       {/* Bottom section */}
       <div className="border-t border-sidebar-border p-3 space-y-1">
@@ -217,25 +254,7 @@ export default function Sidebar({ collapsed, onToggle, onMobileToggle }: Sidebar
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <nav className="flex-1 py-3 px-2 space-y-1">
-              {navItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => handleNav(item)}
-                  className={
-                    'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ' +
-                    (isActive(item)
-                      ? 'bg-sidebar-active text-accent-400'
-                      : 'text-gray-400 hover:text-gray-200 hover:bg-sidebar-hover')
-                  }
-                >
-                  <item.icon
-                    className={'w-4 h-4 shrink-0' + (isActive(item) ? ' text-accent-400' : '')}
-                  />
-                  <span>{item.label}</span>
-                </button>
-              ))}
-            </nav>
+            {renderNav(true)}
             <div className="border-t border-sidebar-border p-3">
               <button
                 onClick={handleSignOut}

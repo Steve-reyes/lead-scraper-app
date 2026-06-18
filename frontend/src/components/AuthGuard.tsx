@@ -6,6 +6,27 @@ import { Loader2 } from 'lucide-react';
 
 const PUBLIC_PATHS = ['/login'];
 
+const ALL_PERMISSIONS = ['scrape', 'enrich', 'enriched', 'lists', 'kanban', 'score', 'analytics', 'settings', 'users'];
+const ROLE_PRESETS: Record<string, string[]> = {
+  admin: ALL_PERMISSIONS,
+  manager: ALL_PERMISSIONS.filter(p => p !== 'users'),
+  viewer: ['scrape', 'lists', 'kanban'],
+  custom: [],
+};
+
+const PATH_TO_PERM: Record<string, string> = {
+  '/': 'scrape',
+  '/scrape': 'scrape',
+  '/enrich': 'enrich',
+  '/enriched-businesses': 'enriched',
+  '/saved-lists': 'lists',
+  '/lead-kanban': 'kanban',
+  '/lead-score': 'score',
+  '/analytics': 'analytics',
+  '/settings': 'settings',
+  '/users': 'users',
+};
+
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -21,11 +42,34 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const pw = localStorage.getItem('app-password') || 'leadscraper2024';
-    const token = localStorage.getItem('auth-token');
-    if (token === pw) {
+    try {
+      const stored = localStorage.getItem('leadscraper-user');
+      if (!stored) {
+        setStatus('noauth');
+        router.replace('/login');
+        return;
+      }
+
+      const user = JSON.parse(stored);
+      if (!user.token || !user.id) {
+        setStatus('noauth');
+        router.replace('/login');
+        return;
+      }
+
+      // Check permission for current page
+      const requiredPerm = PATH_TO_PERM[pathname] || '';
+      if (requiredPerm) {
+        const perms = user.permissions || ROLE_PRESETS[user.role] || [];
+        if (!perms.includes(requiredPerm)) {
+          router.replace('/');
+          setStatus('noauth');
+          return;
+        }
+      }
+
       setStatus('auth');
-    } else {
+    } catch {
       setStatus('noauth');
       router.replace('/login');
     }
