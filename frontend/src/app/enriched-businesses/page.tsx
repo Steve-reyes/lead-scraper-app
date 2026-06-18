@@ -166,6 +166,12 @@ export default function EnrichedBusinessesPage() {
     next.add(listName);
     setSentLists(next);
     localStorage.setItem('sent-to-users', JSON.stringify(Array.from(next)));
+    // Un-hide from pipeline if previously deleted
+    try {
+      const hidden = JSON.parse(localStorage.getItem('pipeline-hidden') || '[]');
+      const cleaned = hidden.filter((h: string) => h !== listName);
+      if (cleaned.length < hidden.length) localStorage.setItem('pipeline-hidden', JSON.stringify(cleaned));
+    } catch {}
     router.push('/lead-kanban');
   };
 

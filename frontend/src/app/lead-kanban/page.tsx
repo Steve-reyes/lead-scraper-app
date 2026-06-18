@@ -61,9 +61,17 @@ export default function LeadKanbanPage() {
         role = u.role || '';
       } catch {}
 
+      // Get hidden (removed from pipeline) lists
+      let hidden: string[] = [];
+      try {
+        hidden = JSON.parse(localStorage.getItem('pipeline-hidden') || '[]');
+      } catch {}
+
       const parsed: EnrichedGroup[] = JSON.parse(stored);
       // Filter: admins don't see items sent to users, regular users see only items sent to them
+      // Also filter out hidden (deleted from pipeline) lists
       const filtered = parsed.filter((g: any) => {
+        if (hidden.includes(g.listName)) return false;
         if (role === 'admin') return !g.sentTo || g.sentTo !== 'users';
         if (role) return g.sentTo === 'users';  // non-admin: only see user-targeted
         return true;  // no role info: show all (backward compat)
@@ -86,11 +94,24 @@ export default function LeadKanbanPage() {
     } catch {}
   }, []);
 
-  // Persist kanbanStatus changes back to localStorage
+  // Persist kanbanStatus changes to pipeline-specific storage (NOT enriched-businesses)
   useEffect(() => {
     if (groups.length === 0) return;
     try {
-      localStorage.setItem('enriched-businesses', JSON.stringify(groups));
+      // Save pipeline state separately - only status/position changes
+      const stored = localStorage.getItem('enriched-businesses');
+      if (!stored) return;
+      const parsed: EnrichedGroup[] = JSON.parse(stored);
+      for (const g of parsed) {
+        const live = groups.find(lg => lg.listName === g.listName);
+        if (live) {
+          for (const l of g.leads) {
+            const ll = live.leads.find(le => le.businessName === l.businessName);
+            if (ll) l.kanbanStatus = ll.kanbanStatus;
+          }
+        }
+      }
+      localStorage.setItem('enriched-businesses', JSON.stringify(parsed));
     } catch {}
   }, [groups]);
 
@@ -125,12 +146,15 @@ export default function LeadKanbanPage() {
   };
 
   const deleteGroup = (listName: string) => {
+    // Hide from pipeline only — don't delete source data
     const updated = groups.filter((g) => g.listName !== listName);
     setGroups(updated);
     try {
-      localStorage.setItem('enriched-businesses', JSON.stringify(updated));
+      const hidden = JSON.parse(localStorage.getItem('pipeline-hidden') || '[]');
+      if (!hidden.includes(listName)) hidden.push(listName);
+      localStorage.setItem('pipeline-hidden', JSON.stringify(hidden));
     } catch {}
-    // Also delete from backend
+    // Also delete from backend enriched_groups table
     fetch('/api/enriched-groups/' + encodeURIComponent(listName), {
       method: 'DELETE',
     }).catch(() => {});
