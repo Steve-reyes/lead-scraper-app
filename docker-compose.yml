@@ -8,8 +8,8 @@ services:
     volumes:
       - /root/steves-dev/lead-scraper-data:/app/data
     environment:
-      - PORT=4000
-      - WS_PORT=4001
+      - PORT=4002
+      - WS_PORT=4003
       - NODE_ENV=production
       - CHROME_CDP_URL=ws://127.0.0.1:3005
       - FLARESOLVER_URL=http://127.0.0.1:8191/v1

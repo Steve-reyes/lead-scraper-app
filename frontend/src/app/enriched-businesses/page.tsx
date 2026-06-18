@@ -103,6 +103,17 @@ export default function EnrichedBusinessesPage() {
     setExpandedGroup((prev) => (prev === name ? null : name));
   };
 
+  const forwardToKanban = (leads: Lead[], listName: string) => {
+    try {
+      const existing = JSON.parse(localStorage.getItem('enriched-businesses') || '[]');
+      const merged = [...existing.filter((g: any) => g.listName !== listName), { listName, leads, enrichedAt: new Date().toISOString() }];
+      localStorage.setItem('enriched-businesses', JSON.stringify(merged));
+    } catch {
+      localStorage.setItem('enriched-businesses', JSON.stringify([{ listName, leads, enrichedAt: new Date().toISOString() }]));
+    }
+    router.push('/lead-kanban');
+  };
+
   const forwardToScore = (leads: Lead | Lead[]) => {
     const items = Array.isArray(leads) ? leads : [leads];
     try {
@@ -246,6 +257,15 @@ export default function EnrichedBusinessesPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            forwardToKanban(group.leads, group.listName);
+                          }}
+                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-purple-600 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
+                        >
+                          <Share2 className="w-3 h-3" /> Pipeline
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();

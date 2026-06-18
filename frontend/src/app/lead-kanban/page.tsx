@@ -13,6 +13,7 @@ import {
   ChevronRight,
   MoreVertical,
   AlertCircle,
+  Trash2,
 } from 'lucide-react';
 
 const PIPELINE_STAGES = [
@@ -110,6 +111,18 @@ export default function LeadKanbanPage() {
     if (navigator.clipboard) navigator.clipboard.writeText(t);
   };
 
+  const deleteGroup = (listName: string) => {
+    const updated = groups.filter((g) => g.listName !== listName);
+    setGroups(updated);
+    try {
+      localStorage.setItem('enriched-businesses', JSON.stringify(updated));
+    } catch {}
+    // Also delete from backend
+    fetch('/api/enriched-groups/' + encodeURIComponent(listName), {
+      method: 'DELETE',
+    }).catch(() => {});
+  };
+
   const totalLeads = groups.reduce((sum, g) => sum + g.leads.length, 0);
 
   const stageCounts = useMemo(() => {
@@ -180,6 +193,13 @@ export default function LeadKanbanPage() {
                   <span className="text-[11px] text-gray-400">
                     New: {(perStage['new'] || []).length} · Contacted: {(perStage['contacted'] || []).length} · Lost: {(perStage['lost'] || []).length} · Incomplete: {(perStage['incomplete'] || []).length}
                   </span>
+                  <div
+                    onClick={(e) => { e.stopPropagation(); deleteGroup(group.listName); }}
+                    className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors cursor-pointer"
+                    title="Delete group"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </div>
                 </button>
 
                 {/* Kanban columns for this list */}
