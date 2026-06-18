@@ -29,6 +29,15 @@ export default function EnrichedBusinessesPage() {
   const [needsRestore, setNeedsRestore] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [restored, setRestored] = useState(false);
+  const [sentLists, setSentLists] = useState<Set<string>>(new Set());
+
+  // Load forwarded lists from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('sent-to-users');
+      if (stored) setSentLists(new Set(JSON.parse(stored)));
+    } catch {}
+  }, []);
 
   // Load from API, fall back to localStorage
   useEffect(() => {
@@ -151,6 +160,11 @@ export default function EnrichedBusinessesPage() {
     } catch {
       localStorage.setItem('enriched-businesses', JSON.stringify([{ listName, leads, enrichedAt: new Date().toISOString() }]));
     }
+    // Mark as sent
+    const next = new Set(sentLists);
+    next.add(listName);
+    setSentLists(next);
+    localStorage.setItem('sent-to-users', JSON.stringify(Array.from(next)));
     router.push('/lead-kanban');
   };
 
@@ -309,15 +323,21 @@ export default function EnrichedBusinessesPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            forwardToKanban(group.leads, group.listName);
-                          }}
-                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-purple-600 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
-                        >
-                          <Share2 className="w-3 h-3" /> Pipeline
-                        </button>
+                        {sentLists.has(group.listName) ? (
+                          <span className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-green-600 bg-green-50 border border-green-200 rounded-lg">
+                            <CheckCircle2 className="w-3 h-3" /> Sent
+                          </span>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              forwardToKanban(group.leads, group.listName);
+                            }}
+                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-purple-600 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
+                          >
+                            <Share2 className="w-3 h-3" /> Send to Users
+                          </button>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
