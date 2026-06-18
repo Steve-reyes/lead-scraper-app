@@ -31,3 +31,4 @@ npm-debug.log*
 # Docker
 docker-data
 backend/data/users.json
+backend/data/leads.db*
