@@ -74,20 +74,10 @@ export default function LeadKanbanPage() {
           return true;
         });
 
-        // Merge kanbanStatus from localStorage (per-browser positions)
-        let localStatus: Record<string, Record<string, string>> = {};
-        try {
-          const stored = localStorage.getItem('kanban-statuses');
-          if (stored) localStatus = JSON.parse(stored);
-        } catch {}
-
+        // Status comes from the API JSON (persisted on server, shared across browsers)
         for (const g of filtered) {
-          const saved = localStatus[g.listName] || {};
           for (const l of g.leads) {
-            // Apply saved kanban status or auto-sort
-            if (saved[l.businessName]) {
-              l.kanbanStatus = saved[l.businessName];
-            } else {
+            if (!l.kanbanStatus) {
               l.kanbanStatus = (!l.email) ? 'incomplete' : 'new';
             }
             l.listName = g.listName;
@@ -105,19 +95,23 @@ export default function LeadKanbanPage() {
     load();
   }, []);
 
-  // Persist kanbanStatus changes to localStorage (per-browser positions)
+  // Persist kanbanStatus to API (server-side, shared across browsers)
   useEffect(() => {
     if (groups.length === 0) return;
-    try {
-      const statuses: Record<string, Record<string, string>> = {};
+    const save = async () => {
       for (const g of groups) {
-        statuses[g.listName] = {};
         for (const l of g.leads) {
-          statuses[g.listName][l.businessName] = l.kanbanStatus || 'new';
+          try {
+            await fetch(`${API}/api/enriched-groups/${encodeURIComponent(g.listName)}/lead-status`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ businessName: l.businessName, kanbanStatus: l.kanbanStatus || 'new' }),
+            });
+          } catch {}
         }
       }
-      localStorage.setItem('kanban-statuses', JSON.stringify(statuses));
-    } catch {}
+    };
+    save();
   }, [groups]);
 
   const moveLead = (listName: string, leadId: string, toStage: string) => {

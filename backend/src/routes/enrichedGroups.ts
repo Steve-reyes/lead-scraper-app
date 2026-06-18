@@ -152,6 +152,27 @@ router.post('/enriched-groups/restore', (req: Request, res: Response) => {
   }
 });
 
+// PUT /api/enriched-groups/:name/lead-status — update one lead's kanban status
+router.put('/enriched-groups/:name/lead-status', (req: Request, res: Response) => {
+  try {
+    const { businessName, kanbanStatus } = req.body;
+    if (!businessName || !kanbanStatus) {
+      return res.status(400).json({ error: 'businessName and kanbanStatus required' });
+    }
+    const row = getDb().prepare('SELECT leads FROM enriched_groups WHERE list_name = ?').get(req.params.name) as any;
+    if (!row) return res.status(404).json({ error: 'Group not found' });
+    const leads = JSON.parse(row.leads);
+    const lead = leads.find((l: any) => l.businessName === businessName);
+    if (!lead) return res.status(404).json({ error: 'Lead not found in group' });
+    lead.kanbanStatus = kanbanStatus;
+    getDb().prepare('UPDATE enriched_groups SET leads = ?, updated_at = datetime(\'now\') WHERE list_name = ?')
+      .run(JSON.stringify(leads), req.params.name);
+    res.json({ updated: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // DELETE /api/enriched-groups/:name — clear sentTo (un-send, don't delete data)
 router.delete('/enriched-groups/:name', (req: Request, res: Response) => {
   try {

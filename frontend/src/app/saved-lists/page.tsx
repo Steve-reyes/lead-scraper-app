@@ -33,61 +33,29 @@ export default function SavedListsPage() {
   const [expandedList, setExpandedList] = useState<string | null>(null);
   const [loadedLeads, setLoadedLeads] = useState<Lead[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [needsRestore, setNeedsRestore] = useState(false);
-  const [restoring, setRestoring] = useState(false);
-  const [restored, setRestored] = useState(false);
-
-  // Load saved lists from API + localStorage on mount
+  // Load saved lists from API only
   useEffect(() => {
     async function load() {
       try {
-        // Fetch from API
         const res = await fetch('/api/saved-lists');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.lists && data.lists.length > 0) {
-            const apiLists: Record<string, SavedList> = {};
-            for (const list of data.lists) {
-              apiLists[list.name] = {
-                name: list.name,
-                leads: list.leads,
-                createdAt: list.createdAt,
-                leadCount: list.leadCount,
-              };
-            }
-            // Merge with localStorage — API takes precedence
-            const merged = { ...apiLists };
-            try {
-              const stored = localStorage.getItem('saved-lists');
-              if (stored) {
-                const localParsed = JSON.parse(stored);
-                // Only add local lists not in API
-                for (const [k, v] of Object.entries(localParsed)) {
-                  if (!merged[k]) {
-                    merged[k] = v as SavedList;
-                    setNeedsRestore(true);
-                  }
-                }
-              }
-            } catch {}
-            setSavedLists(merged);
-            return;
-          }
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.lists || data.lists.length === 0) {
+          setSavedLists({});
+          return;
         }
-      } catch {
-        console.warn('[SavedLists] API unavailable, falling back to localStorage');
-      }
-
-      // Fallback: load from localStorage only
-      try {
-        const stored = localStorage.getItem('saved-lists');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          setSavedLists(parsed);
-          setNeedsRestore(true);
+        const apiLists: Record<string, SavedList> = {};
+        for (const list of data.lists) {
+          apiLists[list.name] = {
+            name: list.name,
+            leads: list.leads,
+            createdAt: list.createdAt,
+            leadCount: list.leadCount,
+          };
         }
+        setSavedLists(apiLists);
       } catch {
-        console.warn('[SavedLists] Could not load from localStorage');
+        console.warn('[SavedLists] API unavailable');
       }
     }
     load();
@@ -110,34 +78,11 @@ export default function SavedListsPage() {
     setLoadedLeads(savedLists[listName]?.leads || []);
   };
 
-  const restoreToServer = async () => {
-    setRestoring(true);
-    try {
-      const stored = localStorage.getItem('saved-lists');
-      if (!stored) return;
-      const parsed = JSON.parse(stored);
-      let count = 0;
-      for (const [name, list] of Object.entries(parsed)) {
-        const sl = list as SavedList;
-        await fetch('/api/saved-lists', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: sl.name, leads: sl.leads }),
-        });
-        count++;
-      }
-      setRestored(true);
-    } catch {}
-    setRestoring(false);
-  };
-
-  const handleDeleteList = (listName: string) => {
-    setSavedLists((prev) => {
-      const next = { ...prev };
-      delete next[listName];
-      localStorage.setItem('saved-lists', JSON.stringify(next));
-      return next;
-    });
+  const handleDeleteList = async (listName: string) => {
+    const next = { ...savedLists };
+    delete next[listName];
+    setSavedLists(next);
+    await fetch('/api/saved-lists/' + encodeURIComponent(listName), { method: 'DELETE' }).catch(() => {});
     if (expandedList === listName) {
       setExpandedList(null);
       setLoadedLeads([]);
@@ -153,17 +98,6 @@ export default function SavedListsPage() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <div className="bg-white border-b border-panel-border px-4 md:px-6 py-4">
-          {(needsRestore && !restored) && (
-            <div className="mb-3">
-              <button
-                onClick={restoreToServer}
-                disabled={restoring}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
-              >
-                {restoring ? 'Syncing...' : '🔄 Sync to Server'}
-              </button>
-            </div>
-          )}
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-purple-500 to-accent-500 flex items-center justify-center shrink-0">
               <List className="w-4 h-4 text-white" />
