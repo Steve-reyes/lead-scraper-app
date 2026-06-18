@@ -84,6 +84,7 @@ export default function SavedListsPage() {
         if (stored) {
           const parsed = JSON.parse(stored);
           setSavedLists(parsed);
+          setNeedsRestore(true);
         }
       } catch {
         console.warn('[SavedLists] Could not load from localStorage');
