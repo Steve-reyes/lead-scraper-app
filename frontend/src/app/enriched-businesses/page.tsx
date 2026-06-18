@@ -33,33 +33,46 @@ export default function EnrichedBusinessesPage() {
   // Load from API, fall back to localStorage
   useEffect(() => {
     const load = async () => {
+      let groupsLoaded: EnrichedGroup[] = [];
       try {
         const res = await fetch(`${API}/api/enriched-groups`);
         const data = await res.json();
         if (Array.isArray(data.groups) && data.groups.length > 0) {
-          setGroups(data.groups);
-          setLoading(false);
-          return;
-        }
-      } catch {}
-      // Fallback: load from localStorage
-      try {
-        const stored = localStorage.getItem('enriched-businesses');
-        if (stored) {
-          const parsed: EnrichedGroup[] = JSON.parse(stored);
-          if (parsed.length > 0) {
-            setGroups(parsed);
+          groupsLoaded = data.groups;
+          // Check if individual leads table is also populated
+          const leadsRes = await fetch(`${API}/api/leads`);
+          const leadsData = await leadsRes.json();
+          const totalGroupLeads = groupsLoaded.reduce((s: number, g: EnrichedGroup) => s + g.leads.length, 0);
+          if (!leadsData.leads || leadsData.leads.length < totalGroupLeads * 0.5) {
             setNeedsRestore(true);
-            setLoading(false);
-            return;
           }
         }
-        // Fallback: backfill from enrich session
+      } catch {}
+      if (groupsLoaded.length === 0) {
+        // Fallback: load from localStorage
+        try {
+          const stored = localStorage.getItem('enriched-businesses');
+          if (stored) {
+            const parsed: EnrichedGroup[] = JSON.parse(stored);
+            if (parsed.length > 0) {
+              groupsLoaded = parsed;
+              setNeedsRestore(true);
+            }
+          }
+        } catch {}
+      }
+      if (groupsLoaded.length > 0) {
+        setGroups(groupsLoaded);
+        setLoading(false);
+        return;
+      }
+      // Fallback: backfill from enrich session
+      try {
         const sessionLeads = localStorage.getItem('enrich-session-leads');
         const sessionName = localStorage.getItem('enrich-session-name');
         if (sessionLeads && sessionName) {
           const leads: Lead[] = JSON.parse(sessionLeads);
-          const completed = leads.filter((l) => l.phone || l.email || l.website);
+          const completed = leads.filter((l: Lead) => l.phone || l.email || l.website);
           if (completed.length > 0) {
             const entry: EnrichedGroup = {
               listName: sessionName,
@@ -67,6 +80,7 @@ export default function EnrichedBusinessesPage() {
               enrichedAt: new Date().toISOString(),
             };
             setGroups([entry]);
+            setNeedsRestore(true);
           }
         }
       } catch (e) {
