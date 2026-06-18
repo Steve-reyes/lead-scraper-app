@@ -42,6 +42,8 @@ interface EnrichedGroup {
   enrichedAt: string;
 }
 
+const API = process.env.NEXT_PUBLIC_API_URL || '';
+
 export default function LeadKanbanPage() {
   const [groups, setGroups] = useState<EnrichedGroup[]>([]);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -49,73 +51,72 @@ export default function LeadKanbanPage() {
   const [expandedLists, setExpandedLists] = useState<Record<string, boolean>>({});
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [showHidden, setShowHidden] = useState(false);
-  const [hiddenLists, setHiddenLists] = useState<string[]>([]);
-
-  // Load enriched groups from localStorage
+  // Load enriched groups from API (shared across browsers)
   useEffect(() => {
-    const stored = localStorage.getItem('enriched-businesses');
-    if (!stored) return;
-    try {
-      // Determine user role
-      let role = '';
+    const load = async () => {
       try {
-        const u = JSON.parse(localStorage.getItem('leadscraper-user') || '{}');
-        role = u.role || '';
-      } catch {}
+        // Determine user role
+        let role = '';
+        try {
+          const u = JSON.parse(localStorage.getItem('leadscraper-user') || '{}');
+          role = u.role || '';
+        } catch {}
 
-      // Get hidden (removed from pipeline) lists
-      let hidden: string[] = [];
-      try {
-        hidden = JSON.parse(localStorage.getItem('pipeline-hidden') || '[]');
-      } catch {}
-      setHiddenLists(hidden);
+        const res = await fetch(`${API}/api/enriched-groups`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!Array.isArray(data.groups) || data.groups.length === 0) return;
 
-      const parsed: EnrichedGroup[] = JSON.parse(stored);
-      // Filter: admins don't see items sent to users, regular users see only items sent to them
-      // Also filter out hidden (deleted from pipeline) lists
-      const filtered = parsed.filter((g: any) => {
-        if (hidden.includes(g.listName)) return false;
-        if (role === 'admin') return !g.sentTo || g.sentTo !== 'users';
-        if (role) return g.sentTo === 'users';  // non-admin: only see user-targeted
-        return true;  // no role info: show all (backward compat)
-      });
-      for (const g of filtered) {
-        for (const l of g.leads) {
-          if (l.kanbanStatus !== 'contacted' && l.kanbanStatus !== 'qualified' &&
-              l.kanbanStatus !== 'closed' && l.kanbanStatus !== 'lost') {
-            // Auto-sort: no email → Incomplete, else New
-            l.kanbanStatus = (!l.email) ? 'incomplete' : 'new';
+        // Filter: admins don't see items sent to users, regular users see only items sent to them
+        const filtered = data.groups.filter((g: any) => {
+          if (role === 'admin') return !g.sentTo || g.sentTo !== 'users';
+          if (role) return g.sentTo === 'users';
+          return true;
+        });
+
+        // Merge kanbanStatus from localStorage (per-browser positions)
+        let localStatus: Record<string, Record<string, string>> = {};
+        try {
+          const stored = localStorage.getItem('kanban-statuses');
+          if (stored) localStatus = JSON.parse(stored);
+        } catch {}
+
+        for (const g of filtered) {
+          const saved = localStatus[g.listName] || {};
+          for (const l of g.leads) {
+            // Apply saved kanban status or auto-sort
+            if (saved[l.businessName]) {
+              l.kanbanStatus = saved[l.businessName];
+            } else {
+              l.kanbanStatus = (!l.email) ? 'incomplete' : 'new';
+            }
+            l.listName = g.listName;
           }
-          l.listName = g.listName;
         }
+        setGroups(filtered);
+        // Expand all by default
+        const expanded: Record<string, boolean> = {};
+        for (const g of filtered) expanded[g.listName] = true;
+        setExpandedLists(expanded);
+      } catch (e) {
+        console.error('[LeadKanban] Failed to load from API', e);
       }
-      setGroups(filtered);
-      // Expand all by default
-      const expanded: Record<string, boolean> = {};
-      for (const g of filtered) expanded[g.listName] = true;
-      setExpandedLists(expanded);
-    } catch {}
+    };
+    load();
   }, []);
 
-  // Persist kanbanStatus changes to pipeline-specific storage (NOT enriched-businesses)
+  // Persist kanbanStatus changes to localStorage (per-browser positions)
   useEffect(() => {
     if (groups.length === 0) return;
     try {
-      // Save pipeline state separately - only status/position changes
-      const stored = localStorage.getItem('enriched-businesses');
-      if (!stored) return;
-      const parsed: EnrichedGroup[] = JSON.parse(stored);
-      for (const g of parsed) {
-        const live = groups.find(lg => lg.listName === g.listName);
-        if (live) {
-          for (const l of g.leads) {
-            const ll = live.leads.find(le => le.businessName === l.businessName);
-            if (ll) l.kanbanStatus = ll.kanbanStatus;
-          }
+      const statuses: Record<string, Record<string, string>> = {};
+      for (const g of groups) {
+        statuses[g.listName] = {};
+        for (const l of g.leads) {
+          statuses[g.listName][l.businessName] = l.kanbanStatus || 'new';
         }
       }
-      localStorage.setItem('enriched-businesses', JSON.stringify(parsed));
+      localStorage.setItem('kanban-statuses', JSON.stringify(statuses));
     } catch {}
   }, [groups]);
 
@@ -149,39 +150,14 @@ export default function LeadKanbanPage() {
     if (navigator.clipboard) navigator.clipboard.writeText(t);
   };
 
-  const doDelete = (listName: string) => {
-    // Hide from pipeline only — don't delete source data
+  const doDelete = async (listName: string) => {
     const updated = groups.filter((g) => g.listName !== listName);
     setGroups(updated);
-    try {
-      const hidden = JSON.parse(localStorage.getItem('pipeline-hidden') || '[]');
-      if (!hidden.includes(listName)) hidden.push(listName);
-      localStorage.setItem('pipeline-hidden', JSON.stringify(hidden));
-      setHiddenLists(hidden);
-    } catch {}
-    // Also delete from backend enriched_groups table
-    fetch('/api/enriched-groups/' + encodeURIComponent(listName), {
+    // Delete from API (shared across browsers)
+    await fetch(`/api/enriched-groups/${encodeURIComponent(listName)}`, {
       method: 'DELETE',
     }).catch(() => {});
     setConfirmDelete(null);
-  };
-
-  const restoreGroup = (listName: string) => {
-    try {
-      const hidden = JSON.parse(localStorage.getItem('pipeline-hidden') || '[]');
-      const cleaned = hidden.filter((h: string) => h !== listName);
-      localStorage.setItem('pipeline-hidden', JSON.stringify(cleaned));
-      setHiddenLists(cleaned);
-      // Reload from enriched-businesses to get the restored list
-      const stored = localStorage.getItem('enriched-businesses');
-      if (stored) {
-        const parsed: EnrichedGroup[] = JSON.parse(stored);
-        const restored = parsed.filter((g: any) => g.listName === listName);
-        if (restored.length > 0) {
-          setGroups(prev => [...prev, ...restored]);
-        }
-      }
-    } catch {}
   };
 
   const totalLeads = groups.reduce((sum, g) => sum + g.leads.length, 0);
@@ -211,14 +187,6 @@ export default function LeadKanbanPage() {
   {totalLeads} leads · New: {stageCounts['new'] || 0} · Contacted: {stageCounts['contacted'] || 0} · Qualified: {stageCounts['qualified'] || 0} · Won: {stageCounts['closed'] || 0} · Lost: {stageCounts['lost'] || 0} · Incomplete: {stageCounts['incomplete'] || 0}
 </p>
           </div>
-          {hiddenLists.length > 0 && (
-            <button
-              onClick={() => setShowHidden(!showHidden)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              {showHidden ? 'Hide' : '🗑️'} {hiddenLists.length} hidden list{hiddenLists.length > 1 ? 's' : ''}
-            </button>
-          )}
         </header>
 
         {/* Kanban Board — grouped by list */}
@@ -418,33 +386,6 @@ export default function LeadKanbanPage() {
           </div>
         )}
 
-        {/* Hidden lists panel */}
-        {showHidden && hiddenLists.length > 0 && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md mx-4 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-bold text-gray-900">Hidden Lists</h3>
-                <button onClick={() => setShowHidden(false)} className="p-1 text-gray-400 hover:text-gray-600">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 mb-4">Lists removed from the pipeline. Click to restore.</p>
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {hiddenLists.map((h: string) => (
-                  <div key={h} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg border border-gray-100">
-                    <span className="text-sm text-gray-700">{h}</span>
-                    <button
-                      onClick={() => { restoreGroup(h); }}
-                      className="px-3 py-1 text-xs font-semibold text-accent-600 hover:bg-accent-50 rounded-lg transition-colors"
-                    >
-                      Restore
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

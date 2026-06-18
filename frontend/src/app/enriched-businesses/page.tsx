@@ -152,8 +152,17 @@ export default function EnrichedBusinessesPage() {
     setRestoring(false);
   };
 
-  const forwardToKanban = (leads: Lead[], listName: string) => {
+  const forwardToKanban = async (leads: Lead[], listName: string) => {
     const entry = { listName, leads, enrichedAt: new Date().toISOString(), sentTo: 'users' };
+    // Save to API (shared across browsers)
+    try {
+      await fetch(`${API}/api/enriched-groups`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry),
+      });
+    } catch {}
+    // Also update localStorage for current browser
     try {
       const existing = JSON.parse(localStorage.getItem('enriched-businesses') || '[]');
       const merged = [...existing.filter((g: any) => g.listName !== listName), entry];

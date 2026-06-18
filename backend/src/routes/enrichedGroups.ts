@@ -29,9 +29,12 @@ function getDb(): any {
       list_name TEXT PRIMARY KEY,
       leads TEXT NOT NULL,
       enriched_at TEXT NOT NULL,
+      sent_to TEXT DEFAULT '',
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+  // Add sent_to column if missing (migration)
+  try { db.exec('ALTER TABLE enriched_groups ADD COLUMN sent_to TEXT DEFAULT ""'); } catch {}
   return db;
 }
 
@@ -45,6 +48,7 @@ router.get('/enriched-groups', (_req: Request, res: Response) => {
       listName: r.list_name,
       leads: JSON.parse(r.leads),
       enrichedAt: r.enriched_at,
+      sentTo: r.sent_to || '',
     }));
     res.json({ groups });
   } catch (e: any) {
@@ -55,18 +59,20 @@ router.get('/enriched-groups', (_req: Request, res: Response) => {
 // POST /api/enriched-groups — save one group
 router.post('/enriched-groups', (req: Request, res: Response) => {
   try {
-    const { listName, leads, enrichedAt } = req.body;
+    const { listName, leads, enrichedAt, sentTo } = req.body;
     if (!listName || !Array.isArray(leads)) {
       return res.status(400).json({ error: 'listName and leads[] required' });
     }
+    const now = enrichedAt || new Date().toISOString();
     getDb().prepare(`
-      INSERT INTO enriched_groups (list_name, leads, enriched_at, updated_at)
-      VALUES (?, ?, ?, datetime('now'))
+      INSERT INTO enriched_groups (list_name, leads, enriched_at, sent_to, updated_at)
+      VALUES (?, ?, ?, ?, datetime('now'))
       ON CONFLICT(list_name) DO UPDATE SET
         leads = ?,
         enriched_at = ?,
+        sent_to = ?,
         updated_at = datetime('now')
-    `).run(listName, JSON.stringify(leads), enrichedAt || new Date().toISOString(), JSON.stringify(leads), enrichedAt || new Date().toISOString());
+    `).run(listName, JSON.stringify(leads), now, sentTo || '', JSON.stringify(leads), now, sentTo || '');
     res.json({ saved: listName });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -146,10 +152,10 @@ router.post('/enriched-groups/restore', (req: Request, res: Response) => {
   }
 });
 
-// DELETE /api/enriched-groups/:name
+// DELETE /api/enriched-groups/:name — clear sentTo (un-send, don't delete data)
 router.delete('/enriched-groups/:name', (req: Request, res: Response) => {
   try {
-    getDb().prepare('DELETE FROM enriched_groups WHERE list_name = ?').run(req.params.name);
+    getDb().prepare('UPDATE enriched_groups SET sent_to = "", updated_at = datetime("now") WHERE list_name = ?').run(req.params.name);
     res.json({ deleted: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
