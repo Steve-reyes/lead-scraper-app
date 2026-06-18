@@ -48,6 +48,9 @@ export default function LeadKanbanPage() {
   const [collapsedCols, setCollapsedCols] = useState<Record<string, boolean>>({});
   const [expandedLists, setExpandedLists] = useState<Record<string, boolean>>({});
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
+  const [hiddenLists, setHiddenLists] = useState<string[]>([]);
 
   // Load enriched groups from localStorage
   useEffect(() => {
@@ -66,6 +69,7 @@ export default function LeadKanbanPage() {
       try {
         hidden = JSON.parse(localStorage.getItem('pipeline-hidden') || '[]');
       } catch {}
+      setHiddenLists(hidden);
 
       const parsed: EnrichedGroup[] = JSON.parse(stored);
       // Filter: admins don't see items sent to users, regular users see only items sent to them
@@ -145,7 +149,7 @@ export default function LeadKanbanPage() {
     if (navigator.clipboard) navigator.clipboard.writeText(t);
   };
 
-  const deleteGroup = (listName: string) => {
+  const doDelete = (listName: string) => {
     // Hide from pipeline only — don't delete source data
     const updated = groups.filter((g) => g.listName !== listName);
     setGroups(updated);
@@ -153,11 +157,31 @@ export default function LeadKanbanPage() {
       const hidden = JSON.parse(localStorage.getItem('pipeline-hidden') || '[]');
       if (!hidden.includes(listName)) hidden.push(listName);
       localStorage.setItem('pipeline-hidden', JSON.stringify(hidden));
+      setHiddenLists(hidden);
     } catch {}
     // Also delete from backend enriched_groups table
     fetch('/api/enriched-groups/' + encodeURIComponent(listName), {
       method: 'DELETE',
     }).catch(() => {});
+    setConfirmDelete(null);
+  };
+
+  const restoreGroup = (listName: string) => {
+    try {
+      const hidden = JSON.parse(localStorage.getItem('pipeline-hidden') || '[]');
+      const cleaned = hidden.filter((h: string) => h !== listName);
+      localStorage.setItem('pipeline-hidden', JSON.stringify(cleaned));
+      setHiddenLists(cleaned);
+      // Reload from enriched-businesses to get the restored list
+      const stored = localStorage.getItem('enriched-businesses');
+      if (stored) {
+        const parsed: EnrichedGroup[] = JSON.parse(stored);
+        const restored = parsed.filter((g: any) => g.listName === listName);
+        if (restored.length > 0) {
+          setGroups(prev => [...prev, ...restored]);
+        }
+      }
+    } catch {}
   };
 
   const totalLeads = groups.reduce((sum, g) => sum + g.leads.length, 0);
@@ -187,6 +211,14 @@ export default function LeadKanbanPage() {
   {totalLeads} leads · New: {stageCounts['new'] || 0} · Contacted: {stageCounts['contacted'] || 0} · Qualified: {stageCounts['qualified'] || 0} · Won: {stageCounts['closed'] || 0} · Lost: {stageCounts['lost'] || 0} · Incomplete: {stageCounts['incomplete'] || 0}
 </p>
           </div>
+          {hiddenLists.length > 0 && (
+            <button
+              onClick={() => setShowHidden(!showHidden)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              {showHidden ? 'Hide' : '🗑️'} {hiddenLists.length} hidden list{hiddenLists.length > 1 ? 's' : ''}
+            </button>
+          )}
         </header>
 
         {/* Kanban Board — grouped by list */}
@@ -231,7 +263,7 @@ export default function LeadKanbanPage() {
                     New: {(perStage['new'] || []).length} · Contacted: {(perStage['contacted'] || []).length} · Lost: {(perStage['lost'] || []).length} · Incomplete: {(perStage['incomplete'] || []).length}
                   </span>
                   <div
-                    onClick={(e) => { e.stopPropagation(); deleteGroup(group.listName); }}
+                    onClick={(e) => { e.stopPropagation(); setConfirmDelete(group.listName); }}
                     className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors cursor-pointer"
                     title="Delete group"
                   >
@@ -359,6 +391,60 @@ export default function LeadKanbanPage() {
             );
           })}
         </div>
+
+        {/* Confirmation modal */}
+        {confirmDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm mx-4 p-6 text-center">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+                <AlertCircle className="w-6 h-6 text-red-500" />
+              </div>
+              <h3 className="text-base font-bold text-gray-900 mb-1">Remove from Pipeline?</h3>
+              <p className="text-xs text-gray-500 mb-2">
+                This hides <strong>{confirmDelete}</strong> from the pipeline.<br />
+                The original data stays on Enriched Businesses.
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <button onClick={() => setConfirmDelete(null)}
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                  Cancel
+                </button>
+                <button onClick={() => doDelete(confirmDelete)}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors">
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Hidden lists panel */}
+        {showHidden && hiddenLists.length > 0 && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md mx-4 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-bold text-gray-900">Hidden Lists</h3>
+                <button onClick={() => setShowHidden(false)} className="p-1 text-gray-400 hover:text-gray-600">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mb-4">Lists removed from the pipeline. Click to restore.</p>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {hiddenLists.map((h: string) => (
+                  <div key={h} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg border border-gray-100">
+                    <span className="text-sm text-gray-700">{h}</span>
+                    <button
+                      onClick={() => { restoreGroup(h); }}
+                      className="px-3 py-1 text-xs font-semibold text-accent-600 hover:bg-accent-50 rounded-lg transition-colors"
+                    >
+                      Restore
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
