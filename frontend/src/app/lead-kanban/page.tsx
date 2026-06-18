@@ -54,8 +54,21 @@ export default function LeadKanbanPage() {
     const stored = localStorage.getItem('enriched-businesses');
     if (!stored) return;
     try {
+      // Determine user role
+      let role = '';
+      try {
+        const u = JSON.parse(localStorage.getItem('leadscraper-user') || '{}');
+        role = u.role || '';
+      } catch {}
+
       const parsed: EnrichedGroup[] = JSON.parse(stored);
-      for (const g of parsed) {
+      // Filter: admins don't see items sent to users, regular users see only items sent to them
+      const filtered = parsed.filter((g: any) => {
+        if (role === 'admin') return !g.sentTo || g.sentTo !== 'users';
+        if (role) return g.sentTo === 'users';  // non-admin: only see user-targeted
+        return true;  // no role info: show all (backward compat)
+      });
+      for (const g of filtered) {
         for (const l of g.leads) {
           if (l.kanbanStatus !== 'contacted' && l.kanbanStatus !== 'qualified' &&
               l.kanbanStatus !== 'closed' && l.kanbanStatus !== 'lost') {
@@ -65,10 +78,10 @@ export default function LeadKanbanPage() {
           l.listName = g.listName;
         }
       }
-      setGroups(parsed);
+      setGroups(filtered);
       // Expand all by default
       const expanded: Record<string, boolean> = {};
-      for (const g of parsed) expanded[g.listName] = true;
+      for (const g of filtered) expanded[g.listName] = true;
       setExpandedLists(expanded);
     } catch {}
   }, []);

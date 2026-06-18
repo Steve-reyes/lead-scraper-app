@@ -153,12 +153,13 @@ export default function EnrichedBusinessesPage() {
   };
 
   const forwardToKanban = (leads: Lead[], listName: string) => {
+    const entry = { listName, leads, enrichedAt: new Date().toISOString(), sentTo: 'users' };
     try {
       const existing = JSON.parse(localStorage.getItem('enriched-businesses') || '[]');
-      const merged = [...existing.filter((g: any) => g.listName !== listName), { listName, leads, enrichedAt: new Date().toISOString() }];
+      const merged = [...existing.filter((g: any) => g.listName !== listName), entry];
       localStorage.setItem('enriched-businesses', JSON.stringify(merged));
     } catch {
-      localStorage.setItem('enriched-businesses', JSON.stringify([{ listName, leads, enrichedAt: new Date().toISOString() }]));
+      localStorage.setItem('enriched-businesses', JSON.stringify([entry]));
     }
     // Mark as sent
     const next = new Set(sentLists);
