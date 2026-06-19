@@ -25,6 +25,10 @@ import { connectWebSocket, disconnectWS, triggerBatchEnrich, triggerDeepBatchEnr
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
+function tryURL(url: string): string {
+  try { return new URL(url).hostname; } catch { return url; }
+}
+
 /** Enrichment status for the current page */
 type EnrichPageStatus = 'idle' | 'enriching' | 'complete' | 'error';
 type LeadEnrichState = 'pending' | 'scanning_website' | 'scanning_directories' | 'complete' | 'failed';
@@ -38,7 +42,9 @@ function StatusBadge({ status }: { status: LeadEnrichState }) {
     failed: { label: 'Failed', color: 'text-red-500', icon: AlertCircle },
   };
 
-  const cfg = config[status];
+  const s = status || 'pending';
+  const cfg = config[s];
+  if (!cfg) return <span className="text-[11px] text-gray-400">Pending</span>;
   const Icon = cfg.icon;
 
   return (
@@ -669,7 +675,7 @@ export default function EnrichPage() {
                         <td className="px-3 py-3">
                           {lead.website ? (
                             <a href={lead.website} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-accent-600 hover:text-accent-700 font-medium">
-                              <span className="truncate max-w-[130px]">{new URL(lead.website).hostname}</span>
+                              <span className="truncate max-w-[130px]">{(tryURL(lead.website))}</span>
                               <ExternalLink className="w-3 h-3 shrink-0" />
                             </a>
                           ) : <span className="text-sm text-gray-300">-</span>}
