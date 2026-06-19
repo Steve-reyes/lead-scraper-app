@@ -10,7 +10,7 @@ const ALL_PERMISSIONS = ['scrape', 'enrich', 'enriched', 'lists', 'kanban', 'sco
 const ROLE_PRESETS: Record<string, string[]> = {
   admin: ALL_PERMISSIONS,
   manager: ALL_PERMISSIONS.filter(p => p !== 'users'),
-  viewer: ['scrape', 'lists', 'kanban'],
+  viewer: ['lists', 'kanban'],
   custom: [],
 };
 
@@ -62,7 +62,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       if (requiredPerm) {
         const perms = user.permissions || ROLE_PRESETS[user.role] || [];
         if (!perms.includes(requiredPerm)) {
-          router.replace('/');
+          // Non-admin users → pipeline, admins → home
+          router.replace(user.role === 'admin' ? '/' : '/lead-kanban');
           setStatus('noauth');
           return;
         }
