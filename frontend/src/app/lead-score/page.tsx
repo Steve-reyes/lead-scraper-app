@@ -131,56 +131,52 @@ export default function LeadScorePage() {
   const [showGuide, setShowGuide] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
 
-  // Load saved scores from API + pending from localStorage
+  // Load saved scores from API + pending from session store
   const loadSaved = useCallback(async () => {
     try {
       const res = await fetch(`${API}/api/lead-scores`);
       const data = await res.json();
       if (Array.isArray(data.entries)) setSavedScores(data.entries);
-    } catch { /* offline fallback — try localStorage */
-      try {
-        const saved = JSON.parse(localStorage.getItem('lead-score-saved') || '[]');
-        setSavedScores(saved);
-      } catch {}
-    }
+    } catch { /* API unavailable */ }
   }, [API]);
 
   useEffect(() => {
     loadSaved();
-    try {
-      const q = JSON.parse(localStorage.getItem('lead-score-queue') || '[]');
-      if (q.length > 0) {
-        const mapped: LeadScoreEntry[] = q.map((l: any) => ({
-          id: l.id || crypto.randomUUID(),
-          businessName: l.businessName || '',
-          phone: l.phone || '',
-          email: l.email || '',
-          website: l.website || '',
-          address: l.address || '',
-          reviewCount: l.reviewCount ?? l.reviews ?? null,
-          rating: l.rating ?? null,
-          socialLinks: l.socialLinks || {},
-          scores: autoScore(l),
-          totalScore: 0, tier: 'warm' as const, scoredAt: new Date().toISOString(),
-        }));
-        setPendingLeads(mapped);
-        localStorage.removeItem('lead-score-queue');
-      }
-    } catch {}
+    (async () => {
+      try {
+        const res = await fetch('/api/session/lead-score-queue');
+        const data = await res.json();
+        if (data.value && Array.isArray(data.value) && data.value.length > 0) {
+          const mapped: LeadScoreEntry[] = data.value.map((l: any) => ({
+            id: l.id || crypto.randomUUID(),
+            businessName: l.businessName || '',
+            phone: l.phone || '',
+            email: l.email || '',
+            website: l.website || '',
+            address: l.address || '',
+            reviewCount: l.reviewCount ?? l.reviews ?? null,
+            rating: l.rating ?? null,
+            socialLinks: l.socialLinks || {},
+            scores: autoScore(l),
+            totalScore: 0, tier: 'warm' as const, scoredAt: new Date().toISOString(),
+          }));
+          setPendingLeads(mapped);
+          // Clear the queue after loading
+          await fetch('/api/session/lead-score-queue', { method: 'DELETE' });
+        }
+      } catch {}
+    })();
   }, [loadSaved]);
 
   const persistSaved = async (entries: LeadScoreEntry[]) => {
     setSavedScores(entries);
-    // Save to API
     try {
       await fetch(`${API}/api/lead-scores`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entries }),
       });
-    } catch { /* fallback localStorage */
-      localStorage.setItem('lead-score-saved', JSON.stringify(entries));
-    }
+    } catch { /* API unavailable */ }
   };
 
   const updateScore = (id: string, key: keyof LeadScoreCriteria, val: number) => {

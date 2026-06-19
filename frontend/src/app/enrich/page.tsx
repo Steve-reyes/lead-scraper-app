@@ -100,48 +100,78 @@ export default function EnrichPage() {
   // Track last clicked index for shift-click range selection
   const lastClickedIndexRef = useRef<number | null>(null);
 
-  // Load imported leads from Saved Lists
+  // Throttled session save ref
+  const sessionSaveRef = useRef<Lead[] | null>(null);
+  const sessionSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Throttled persist of session leads to server (every 3 seconds)
   useEffect(() => {
-    try {
-      const storedLeads = localStorage.getItem('enrich-import-leads');
-      const listName = localStorage.getItem('enrich-list-name');
-      if (storedLeads) {
-        const parsed: Lead[] = JSON.parse(storedLeads);
-        setAllLeads(parsed);
-        const map = new Map<string, Lead>();
-        for (const lead of parsed) {
-          map.set(lead.id, lead);
-        }
-        leadsMapRef.current = map;
-        if (listName) {
-          setActiveListName(listName);
-          setStatusMessage('Imported from saved list');
-        }
-          localStorage.removeItem('enrich-import-leads');
-        localStorage.removeItem('enrich-list-name');
-        // Persist to session storage so they survive page navigation
-        localStorage.setItem('enrich-session-leads', JSON.stringify(parsed));
-        localStorage.setItem('enrich-session-name', listName || 'Imported Leads');
-      } else {
-        // No fresh import — restore last session so nav away + back preserves data
-        const sessionLeads = localStorage.getItem('enrich-session-leads');
-        const sessionName = localStorage.getItem('enrich-session-name');
-        if (sessionLeads) {
-          try {
-            const parsed: Lead[] = JSON.parse(sessionLeads);
-            if (parsed.length > 0) {
-              setAllLeads(parsed);
-              const map = new Map<string, Lead>();
-              for (const lead of parsed) map.set(lead.id, lead);
-              leadsMapRef.current = map;
-              if (sessionName) setActiveListName(sessionName);
-            }
-          } catch {}
-        }
+    const timer = setInterval(() => {
+      if (sessionSaveRef.current) {
+        const data = sessionSaveRef.current;
+        sessionSaveRef.current = null;
+        fetch('/api/session/enrich-session-leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        }).catch(() => {});
       }
-    } catch {
-      console.warn('[Enrich Page] Could not import leads from localStorage');
-    }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Load imported leads from Saved Lists (via server session store)
+  useEffect(() => {
+    (async () => {
+      try {
+        // Check for fresh import from saved-lists
+        const importRes = await fetch('/api/session/enrich-import-leads');
+        const importData = await importRes.json();
+        if (importData.value && Array.isArray(importData.value) && importData.value.length > 0) {
+          const parsed: Lead[] = importData.value;
+          setAllLeads(parsed);
+          const map = new Map<string, Lead>();
+          for (const lead of parsed) map.set(lead.id, lead);
+          leadsMapRef.current = map;
+
+          const nameRes = await fetch('/api/session/enrich-import-name');
+          const nameData = await nameRes.json();
+          if (nameData.value?.name) {
+            setActiveListName(nameData.value.name);
+            setStatusMessage('Imported from saved list');
+          }
+          // Clear import after loading
+          await fetch('/api/session/enrich-import-leads', { method: 'DELETE' });
+          await fetch('/api/session/enrich-import-name', { method: 'DELETE' });
+          // Persist to session store so it survives page navigation
+          await fetch('/api/session/enrich-session-leads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(parsed),
+          });
+          await fetch('/api/session/enrich-session-name', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: nameData.value?.name || 'Imported Leads' }),
+          });
+          return;
+        }
+        // No fresh import — restore last session
+        const sessionRes = await fetch('/api/session/enrich-session-leads');
+        const sessionData = await sessionRes.json();
+        if (sessionData.value && Array.isArray(sessionData.value) && sessionData.value.length > 0) {
+          setAllLeads(sessionData.value);
+          const map = new Map<string, Lead>();
+          for (const lead of sessionData.value) map.set(lead.id, lead);
+          leadsMapRef.current = map;
+          const sNameRes = await fetch('/api/session/enrich-session-name');
+          const sNameData = await sNameRes.json();
+          if (sNameData.value?.name) setActiveListName(sNameData.value.name);
+        }
+      } catch {
+        console.warn('[Enrich Page] Could not load leads from session store');
+      }
+    })();
   }, []);
 
   // Connect WebSocket for enrichment streaming
@@ -156,9 +186,9 @@ export default function EnrichPage() {
               leadsMapRef.current.set(lead.id, lead);
               // Force re-render
               setAllLeads((prev) => prev.map((l) => (l.id === lead.id ? lead : l)));
-              // Persist so data survives page navigation
+              // Persist to session store (throttled to avoid API hammer)
               const all = Array.from(leadsMapRef.current.values());
-              localStorage.setItem('enrich-session-leads', JSON.stringify(all));
+              sessionSaveRef.current = all;
             }
             break;
           }
@@ -166,9 +196,13 @@ export default function EnrichPage() {
           case 'enrich_complete': {
             setEnrichStatus('complete');
             setStatusMessage(data.payload.message || 'Enrichment complete!');
-            // Final persist
+            // Final persist to session store
             const all = Array.from(leadsMapRef.current.values());
-            localStorage.setItem('enrich-session-leads', JSON.stringify(all));
+            fetch('/api/session/enrich-session-leads', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(all),
+            }).catch(() => {});
             break;
           }
 
@@ -317,36 +351,24 @@ export default function EnrichPage() {
     });
   }, [filteredLeads]);
 
-  // Manually save enriched leads from this list to enriched-businesses (localStorage + API)
+  // Manually save enriched leads to server (API only, no localStorage)
   const saveToEnriched = useCallback(() => {
     const completed = allLeads.filter((l) => l.phone || l.email || l.website);
     if (completed.length === 0) {
       alert('No leads with data to save.');
       return;
     }
-    const listName = activeListName || localStorage.getItem('enrich-session-name') || 'Unnamed List';
-    const entry = {
-      listName,
-      leads: completed,
-      enrichedAt: new Date().toISOString(),
-    };
-    try {
-      // Save to localStorage (fallback)
-      const existing = JSON.parse(localStorage.getItem('enriched-businesses') || '[]');
-      const idx = existing.findIndex((g: any) => g.listName === listName);
-      if (idx >= 0) existing[idx] = entry;
-      else existing.push(entry);
-      localStorage.setItem('enriched-businesses', JSON.stringify(existing));
+    const listName = activeListName || 'Unnamed List';
+    const enrichedAt = new Date().toISOString();
 
-      // Also save to backend API so it persists in DB
-      fetch(`${API_BASE}/api/enriched-groups`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ listName, leads: completed, enrichedAt: entry.enrichedAt }),
-      }).catch(() => {}); // silent fail — localStorage is enough
-
-      alert(`Saved ${completed.length} leads to enriched businesses!`);
-    } catch {}
+    // Save to backend API
+    fetch(`${API_BASE}/api/enriched-groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listName, leads: completed, enrichedAt }),
+    })
+      .then(() => alert(`Saved ${completed.length} leads to enriched businesses!`))
+      .catch(() => alert('Failed to save to server.'));
   }, [allLeads, activeListName]);
 
   // Deep enrich selected leads (uses FlareSolverr for directory sites)
@@ -406,8 +428,9 @@ export default function EnrichPage() {
     setSelectedIds(new Set());
     setEnrichStatus('idle');
     setStatusMessage('');
-    localStorage.removeItem('enrich-session-leads');
-    localStorage.removeItem('enrich-session-name');
+    // Clear server session store
+    fetch('/api/session/enrich-session-leads', { method: 'DELETE' }).catch(() => {});
+    fetch('/api/session/enrich-session-name', { method: 'DELETE' }).catch(() => {});
   }, []);
 
   const handleEnrichSelected = useCallback(async () => {

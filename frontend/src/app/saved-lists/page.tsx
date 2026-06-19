@@ -73,9 +73,19 @@ export default function SavedListsPage() {
     }
   };
 
-  const handleLoadLeads = (listName: string) => {
-    setExpandedList(listName);
-    setLoadedLeads(savedLists[listName]?.leads || []);
+  const handleImportToEnrich = async (listName: string, leads: Lead[]) => {
+    // Save leads to server session store (no localStorage)
+    await fetch('/api/session/enrich-import-leads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(leads),
+    }).catch(() => {});
+    await fetch('/api/session/enrich-import-name', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: listName }),
+    }).catch(() => {});
+    router.push('/enrich');
   };
 
   const handleDeleteList = async (listName: string) => {
@@ -196,11 +206,11 @@ export default function SavedListsPage() {
                             <span
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleLoadLeads(list.name);
+                                handleImportToEnrich(list.name, list.leads);
                               }}
                               className="text-xs font-medium text-accent-600 hover:text-accent-700 px-3 py-1.5 rounded-md bg-accent-50 hover:bg-accent-100 transition-colors"
                             >
-                              Load Leads
+                              Import to Enrich
                             </span>
                           </>
                         )}
@@ -301,11 +311,7 @@ export default function SavedListsPage() {
                           </p>
                           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                             <button
-                              onClick={() => {
-                                localStorage.setItem('enrich-import-leads', JSON.stringify(loadedLeads));
-                                localStorage.setItem('enrich-list-name', list.name);
-                                router.push('/enrich');
-                              }}
+                              onClick={() => handleImportToEnrich(list.name, loadedLeads)}
                               className="flex items-center justify-center gap-1.5 px-4 py-2 sm:py-1.5 bg-gradient-to-r from-purple-500 to-accent-500 hover:from-purple-600 hover:to-accent-600 text-white text-xs font-semibold rounded-lg transition-colors w-full sm:w-auto"
                             >
                               <Sparkles className="w-3 h-3" />

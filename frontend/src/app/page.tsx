@@ -189,19 +189,21 @@ export default function Home() {
     URL.revokeObjectURL(url);
   }, [selectedLeads]);
 
-  const handleSaveList = useCallback(() => {
+  const handleSaveList = useCallback(async () => {
     const listName = prompt('Enter a name for this list:');
     if (!listName) return;
 
-    const existing = JSON.parse(localStorage.getItem('saved-lists') || '{}');
-    existing[listName] = {
-      name: listName,
-      leads: selectedLeads,
-      createdAt: new Date().toISOString(),
-      leadCount: selectedLeads.length,
-    };
-    localStorage.setItem('saved-lists', JSON.stringify(existing));
-    alert(`Saved ${selectedLeads.length} leads to "${listName}"`);
+    try {
+      const res = await fetch('/api/saved-lists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: listName, leads: selectedLeads }),
+      });
+      if (!res.ok) throw new Error('API error');
+      alert(`Saved ${selectedLeads.length} leads to "${listName}"`);
+    } catch {
+      alert('Failed to save list. Check your connection.');
+    }
   }, [selectedLeads]);
 
   // Check WebSocket connection status

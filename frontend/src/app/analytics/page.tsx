@@ -68,18 +68,22 @@ export default function AnalyticsPage() {
   const [groups, setGroups] = useState<EnrichedGroup[]>([]);
 
   useEffect(() => {
-    const stored = localStorage.getItem('enriched-businesses');
-    if (!stored) return;
-    try {
-      const parsed: EnrichedGroup[] = JSON.parse(stored);
-      for (const g of parsed) {
-        for (const l of g.leads) {
-          l.kanbanStatus = l.kanbanStatus || 'new';
-          l.listName = g.listName;
+    (async () => {
+      try {
+        const res = await fetch('/api/enriched-groups');
+        const data = await res.json();
+        if (Array.isArray(data.groups)) {
+          const parsed: EnrichedGroup[] = data.groups;
+          for (const g of parsed) {
+            for (const l of g.leads) {
+              l.kanbanStatus = l.kanbanStatus || 'new';
+              l.listName = g.listName;
+            }
+          }
+          setGroups(parsed);
         }
-      }
-      setGroups(parsed);
-    } catch {}
+      } catch {}
+    })();
   }, []);
 
   const allLeads = useMemo(() => groups.flatMap((g) => g.leads), [groups]);

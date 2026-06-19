@@ -26,75 +26,26 @@ export default function EnrichedBusinessesPage() {
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [searchQ, setSearchQ] = useState('');
   const [loading, setLoading] = useState(true);
-  const [needsRestore, setNeedsRestore] = useState(false);
-  const [restoring, setRestoring] = useState(false);
-  const [restored, setRestored] = useState(false);
   const [sentLists, setSentLists] = useState<Set<string>>(new Set());
 
-  // Load forwarded lists from localStorage
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('sent-to-users');
-      if (stored) setSentLists(new Set(JSON.parse(stored)));
-    } catch {}
-  }, []);
-
-  // Load from API, fall back to localStorage
+  // Load from API only (no localStorage fallback)
   useEffect(() => {
     const load = async () => {
-      let groupsLoaded: EnrichedGroup[] = [];
       try {
         const res = await fetch(`${API}/api/enriched-groups`);
         const data = await res.json();
         if (Array.isArray(data.groups) && data.groups.length > 0) {
-          groupsLoaded = data.groups;
-          // Check if individual leads table is also populated
-          const leadsRes = await fetch(`${API}/api/leads`);
-          const leadsData = await leadsRes.json();
-          const totalGroupLeads = groupsLoaded.reduce((s: number, g: EnrichedGroup) => s + g.leads.length, 0);
-          if (!leadsData.leads || leadsData.leads.length < totalGroupLeads * 0.5) {
-            setNeedsRestore(true);
+          setGroups(data.groups);
+          // Build sentLists from API sentTo field
+          const sent = new Set<string>();
+          for (const g of data.groups) {
+            if (g.sentTo === 'users') sent.add(g.listName);
           }
+          setSentLists(sent);
+          setLoading(false);
+          return;
         }
       } catch {}
-      if (groupsLoaded.length === 0) {
-        // Fallback: load from localStorage
-        try {
-          const stored = localStorage.getItem('enriched-businesses');
-          if (stored) {
-            const parsed: EnrichedGroup[] = JSON.parse(stored);
-            if (parsed.length > 0) {
-              groupsLoaded = parsed;
-              setNeedsRestore(true);
-            }
-          }
-        } catch {}
-      }
-      if (groupsLoaded.length > 0) {
-        setGroups(groupsLoaded);
-        setLoading(false);
-        return;
-      }
-      // Fallback: backfill from enrich session
-      try {
-        const sessionLeads = localStorage.getItem('enrich-session-leads');
-        const sessionName = localStorage.getItem('enrich-session-name');
-        if (sessionLeads && sessionName) {
-          const leads: Lead[] = JSON.parse(sessionLeads);
-          const completed = leads.filter((l: Lead) => l.phone || l.email || l.website);
-          if (completed.length > 0) {
-            const entry: EnrichedGroup = {
-              listName: sessionName,
-              leads: completed,
-              enrichedAt: new Date().toISOString(),
-            };
-            setGroups([entry]);
-            setNeedsRestore(true);
-          }
-        }
-      } catch (e) {
-        console.warn('[EnrichedBusinesses] Could not load enriched businesses');
-      }
       setLoading(false);
     };
     load();
@@ -130,68 +81,29 @@ export default function EnrichedBusinessesPage() {
     setExpandedGroup((prev) => (prev === name ? null : name));
   };
 
-  const restoreToServer = async () => {
-    setRestoring(true);
-    try {
-      const stored = localStorage.getItem('enriched-businesses');
-      if (!stored) return;
-      const parsed = JSON.parse(stored);
-      const res = await fetch(`${API}/api/enriched-groups/restore`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsed),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setRestored(true);
-        console.log(`Restored ${data.groupsRestored} groups, ${data.leadsRestored} leads`);
-      }
-    } catch (err: any) {
-      console.error('Restore failed:', err);
-    }
-    setRestoring(false);
-  };
-
   const forwardToKanban = async (leads: Lead[], listName: string) => {
     const entry = { listName, leads, enrichedAt: new Date().toISOString(), sentTo: 'users' };
     // Save to API (shared across browsers)
-    try {
-      await fetch(`${API}/api/enriched-groups`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(entry),
-      });
-    } catch {}
-    // Also update localStorage for current browser
-    try {
-      const existing = JSON.parse(localStorage.getItem('enriched-businesses') || '[]');
-      const merged = [...existing.filter((g: any) => g.listName !== listName), entry];
-      localStorage.setItem('enriched-businesses', JSON.stringify(merged));
-    } catch {
-      localStorage.setItem('enriched-businesses', JSON.stringify([entry]));
-    }
+    await fetch(`${API}/api/enriched-groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(entry),
+    }).catch(() => {});
     // Mark as sent
     const next = new Set(sentLists);
     next.add(listName);
     setSentLists(next);
-    localStorage.setItem('sent-to-users', JSON.stringify(Array.from(next)));
-    // Un-hide from pipeline if previously deleted
-    try {
-      const hidden = JSON.parse(localStorage.getItem('pipeline-hidden') || '[]');
-      const cleaned = hidden.filter((h: string) => h !== listName);
-      if (cleaned.length < hidden.length) localStorage.setItem('pipeline-hidden', JSON.stringify(cleaned));
-    } catch {}
     router.push('/lead-kanban');
   };
 
-  const forwardToScore = (leads: Lead | Lead[]) => {
+  const forwardToScore = async (leads: Lead | Lead[]) => {
     const items = Array.isArray(leads) ? leads : [leads];
-    try {
-      const existing = JSON.parse(localStorage.getItem('lead-score-queue') || '[]');
-      localStorage.setItem('lead-score-queue', JSON.stringify([...existing, ...items]));
-    } catch {
-      localStorage.setItem('lead-score-queue', JSON.stringify(items));
-    }
+    // Save to server session store
+    await fetch('/api/session/lead-score-queue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(items),
+    }).catch(() => {});
     router.push('/lead-score');
   };
 
@@ -257,18 +169,6 @@ export default function EnrichedBusinessesPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {needsRestore && !restored && (
-                <button
-                  onClick={restoreToServer}
-                  disabled={restoring}
-                  className="flex items-center gap-1 px-3 py-2 text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
-                >
-                  {restoring ? 'Restoring...' : '🔄 Restore to Server'}
-                </button>
-              )}
-              {restored && (
-                <span className="text-xs font-medium text-green-600 bg-green-50 border border-green-200 px-3 py-2 rounded-lg">✅ Restored</span>
-              )}
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" />
                 <input
