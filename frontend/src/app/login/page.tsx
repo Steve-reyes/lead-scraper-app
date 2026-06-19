@@ -21,7 +21,7 @@ export default function LoginPage() {
       try {
         const u = JSON.parse(stored);
         if (u.token) {
-          router.push('/');
+          router.push(u.role === 'admin' ? '/' : '/lead-kanban');
           return;
         }
       } catch {}
@@ -56,7 +56,7 @@ export default function LoginPage() {
       const userData = { ...data.user, token: data.token };
       localStorage.setItem('leadscraper-user', JSON.stringify(userData));
       localStorage.setItem('auth-token', data.token);
-      router.push('/');
+      router.push(data.user.role === 'admin' ? '/' : '/lead-kanban');
     } catch (err: any) {
       setError('Connection error — is the backend running?');
     }
