@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
-import { List, Search, Building2, ChevronDown, ChevronRight, ExternalLink, Calendar, Users, Sparkles, Download, DownloadCloud } from 'lucide-react';
+import { List, Search, Building2, ChevronDown, ChevronRight, ExternalLink, Calendar, Users, Sparkles, Download, DownloadCloud, Upload } from 'lucide-react';
 import type { Lead } from '@/lib/types';
 
 interface SavedList {
@@ -33,6 +33,54 @@ export default function SavedListsPage() {
   const [expandedList, setExpandedList] = useState<string | null>(null);
   const [loadedLeads, setLoadedLeads] = useState<Lead[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length < 2) { alert('CSV has no data rows'); return; }
+      const headers = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/[^a-z]/g, ''));
+      const leads: Lead[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+        const lead: any = { id: crypto.randomUUID() };
+        for (let j = 0; j < headers.length; j++) {
+          const h = headers[j];
+          if (h === 'businessname' || h === 'name' || h === 'company') lead.businessName = cols[j] || '';
+          else if (h === 'phone' || h === 'phonenumber') lead.phone = cols[j] || '';
+          else if (h === 'email') lead.email = cols[j] || '';
+          else if (h === 'website' || h === 'url') lead.website = cols[j] || '';
+          else if (h === 'address') lead.address = cols[j] || '';
+          else if (h === 'city') lead.city = cols[j] || '';
+          else if (h === 'state' || h === 'province') lead.state = cols[j] || '';
+          else if (h === 'zip' || h === 'postalcode' || h === 'zipcode') lead.zip = cols[j] || '';
+          else if (h === 'country') lead.country = cols[j] || '';
+          else if (h === 'category' || h === 'type') lead.category = cols[j] || '';
+          else if (h === 'rating') lead.rating = cols[j] ? parseFloat(cols[j]) : null;
+          else if (h === 'reviewcount' || h === 'reviews') lead.reviewCount = cols[j] ? parseInt(cols[j]) : null;
+        }
+        if (lead.businessName) leads.push(lead);
+      }
+      if (leads.length === 0) { alert('No valid leads found in CSV'); return; }
+      const listName = prompt(`Found ${leads.length} leads. Enter list name:`, file.name.replace(/\.csv$/i, ''));
+      if (!listName) return;
+      const res = await fetch('/api/saved-lists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: listName, leads }),
+      });
+      if (!res.ok) throw new Error('API error');
+      alert(`Imported ${leads.length} leads to "${listName}"`);
+      window.location.reload();
+    } catch (err: any) {
+      alert('Import failed: ' + (err.message || 'Unknown error'));
+    }
+    e.target.value = '';
+  }, []);
+
   // Load saved lists from API only
   useEffect(() => {
     async function load() {
@@ -119,6 +167,7 @@ export default function SavedListsPage() {
               </p>
             </div>
             {lists.length > 0 && (
+              <>
               <a
                 href="/api/saved-lists/export-all"
                 download
@@ -127,6 +176,21 @@ export default function SavedListsPage() {
                 <DownloadCloud className="w-4 h-4" />
                 Export All CSV
               </a>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white text-sm font-semibold rounded-lg transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                Import CSV
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              </>
             )}
           </div>
         </div>
