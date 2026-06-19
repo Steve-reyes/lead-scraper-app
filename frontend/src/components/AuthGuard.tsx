@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
@@ -30,13 +30,9 @@ const PATH_TO_PERM: Record<string, string> = {
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [status, setStatus] = useState<'loading' | 'auth' | 'noauth'>('loading');
-  const ran = useRef(false);
+  const [status, setStatus] = useState<'loading' | 'auth'>('loading');
 
   useEffect(() => {
-    if (ran.current) return;
-    ran.current = true;
-
     if (PUBLIC_PATHS.includes(pathname)) {
       setStatus('auth');
       return;
@@ -45,14 +41,12 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     try {
       const stored = localStorage.getItem('leadscraper-user');
       if (!stored) {
-        setStatus('noauth');
         router.replace('/login');
         return;
       }
 
       const user = JSON.parse(stored);
       if (!user.token || !user.id) {
-        setStatus('noauth');
         router.replace('/login');
         return;
       }
@@ -64,14 +58,12 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
         if (!perms.includes(requiredPerm)) {
           // Non-admin users → pipeline, admins → home
           router.replace(user.role === 'admin' ? '/' : '/lead-kanban');
-          setStatus('noauth');
           return;
         }
       }
 
       setStatus('auth');
     } catch {
-      setStatus('noauth');
       router.replace('/login');
     }
   }, [pathname, router]);
@@ -83,8 +75,6 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-
-  if (status === 'noauth') return null;
 
   return <>{children}</>;
 }
